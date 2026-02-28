@@ -32,7 +32,7 @@ Great question. Grep is excellent for text search — but **structural intellige
 
 context-bunker is **not** a grep replacement. It's for things grep structurally can't do well: cross-session memory, transitive dependency graphs, smart context assembly, and dead code detection. See [full CLI comparison](./docs/cli-comparison.md).
 
-## Tools (13)
+## Tools (14)
 
 ### 🔥 Unique Tools (no competitor has these)
 
@@ -59,6 +59,7 @@ context-bunker is **not** a grep replacement. It's for things grep structurally 
 
 | Tool | What it does |
 |------|-------------|
+| `search_code` | Semantic code search using local TF-IDF. No API keys. Finds files relevant to natural language queries. |
 | `reindex` | Force re-index of the codebase or a single file. |
 | `get_status` | Index health, file counts, and session token savings estimate. |
 
@@ -128,8 +129,8 @@ bun run src/index.ts --verbose
 | **Phase 1** | Foundation — scaffold, SQLite, tree-sitter, MCP shell | ✅ Complete |
 | **Phase 2** | Indexing engine — extractor, resolver, watcher, TF-IDF | ✅ Complete |
 | **Phase 3** | Core tools — 7 main intelligence tools | ✅ Complete |
-| **Phase 4** | Unique tools — session diff, dead code, patterns, summaries | 🔲 Planned |
-| **Phase 5** | Polish — CLI, config, tests, publish | 🔲 Planned |
+| **Phase 4** | Unique tools — session diff, dead code, patterns, search, summaries | ✅ Complete |
+| **Phase 5** | Polish — CLI, config, tests, publish | 🔲 Next |
 
 ## License
 

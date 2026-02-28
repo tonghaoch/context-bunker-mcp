@@ -11,6 +11,11 @@ import { getDependencyGraph } from './tools/get-dependency-graph.js'
 import { getCallGraph } from './tools/get-call-graph.js'
 import { getSymbolSource } from './tools/get-symbol-source.js'
 import { getProjectMap } from './tools/get-project-map.js'
+import { getChangesSinceLastSession } from './tools/get-changes.js'
+import { findUnusedExports } from './tools/find-unused-exports.js'
+import { searchByPattern } from './tools/search-by-pattern.js'
+import { getFileSummary } from './tools/get-file-summary.js'
+import { searchCode } from './tools/search-code.js'
 
 export function createServer(db: DB, projectRoot: string) {
   const server = new McpServer({
@@ -131,6 +136,56 @@ export function createServer(db: DB, projectRoot: string) {
       depth: z.number().min(1).max(5).default(3).describe('How many directory levels deep to show'),
     },
     async ({ depth }) => text(getProjectMap(db, depth))
+  )
+
+  // ── get_changes_since_last_session ──
+  server.tool(
+    'get_changes_since_last_session',
+    'What changed in the codebase since the AI last interacted with it. Shows added, modified, and deleted files with their symbols. Impossible without persistent index.',
+    {},
+    async () => text(getChangesSinceLastSession(db, projectRoot))
+  )
+
+  // ── find_unused_exports ──
+  server.tool(
+    'find_unused_exports',
+    'Dead code detection: find exported symbols that are never imported anywhere in the codebase.',
+    {
+      scope: z.string().optional().describe('Limit to exports in files matching this path prefix (e.g. "src/utils/")'),
+    },
+    async ({ scope }) => text(findUnusedExports(db, scope))
+  )
+
+  // ── search_by_pattern ──
+  server.tool(
+    'search_by_pattern',
+    'Find code by structural pattern. Available: http_calls, env_access, error_handlers, async_functions, todos, test_files.',
+    {
+      pattern: z.enum(['http_calls', 'env_access', 'error_handlers', 'async_functions', 'todos', 'test_files'])
+        .describe('Pattern to search for'),
+    },
+    async ({ pattern }) => text(searchByPattern(db, pattern))
+  )
+
+  // ── get_file_summary ──
+  server.tool(
+    'get_file_summary',
+    'Token-efficient file overview (~50 tokens). Shows imports, exports, and dependents in compact format. Use to scan multiple files cheaply.',
+    {
+      file_path: z.string().describe('Relative path to the file'),
+    },
+    async ({ file_path }) => text(getFileSummary(db, file_path))
+  )
+
+  // ── search_code ──
+  server.tool(
+    'search_code',
+    'Semantic code search using TF-IDF. Finds files relevant to a natural language query. No API keys — runs entirely local.',
+    {
+      query: z.string().describe('Search query (e.g. "authentication middleware", "database connection")'),
+      limit: z.number().min(1).max(50).default(10).describe('Max results to return'),
+    },
+    async ({ query, limit }) => text(searchCode(db, query, limit))
   )
 
   return server

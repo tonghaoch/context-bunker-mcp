@@ -6,6 +6,8 @@ import { initParser } from './indexer/parser.js'
 import { indexProject, indexFile, removeFile } from './indexer/indexer.js'
 import { startWatcher } from './indexer/watcher.js'
 import { createServer } from './server.js'
+import { startSession, endSession } from './store/queries.js'
+import { buildFileSnapshot } from './tools/get-changes.js'
 
 // ── CLI Args ──
 const args = process.argv.slice(2)
@@ -57,6 +59,11 @@ async function main() {
     log('File watcher started')
   }
 
+  // Start session tracking
+  const sessionResult = startSession(db)
+  const sessionId = Number(sessionResult.lastInsertRowid)
+  log('Session started:', sessionId)
+
   // Create MCP server
   const server = createServer(db, projectRoot)
 
@@ -65,9 +72,12 @@ async function main() {
   await server.connect(transport)
   log('MCP server running on stdio')
 
-  // Graceful shutdown
+  // Graceful shutdown — save session snapshot
   const shutdown = async () => {
-    log('Shutting down...')
+    log('Saving session snapshot...')
+    const snapshot = buildFileSnapshot(db)
+    endSession(db, sessionId, snapshot)
+    log('Session saved')
     if (watcher) await watcher.close()
     db.close()
     process.exit(0)
