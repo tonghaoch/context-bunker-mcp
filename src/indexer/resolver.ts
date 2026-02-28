@@ -36,23 +36,37 @@ function loadTsConfig(projectRoot: string): TsConfigPaths {
   return cachedTsConfig
 }
 
-function tryResolveFile(basePath: string): string | null {
-  // Exact file
-  if (existsSync(basePath) && !basePath.endsWith('/')) {
-    // Could be a file already
-    try {
-      const stat = Bun?.file?.(basePath) ? true : existsSync(basePath)
-      if (stat) return basePath
-    } catch { /* fallthrough */ }
-  }
+function stripJsExtension(p: string): string {
+  // TS projects import with .js extension targeting compiled output
+  // Strip it so we can find the actual .ts source file
+  return p.replace(/\.(js|mjs|cjs|jsx)$/, '')
+}
 
-  // Try extensions
+function tryResolveFile(basePath: string): string | null {
+  // Exact file exists
+  if (existsSync(basePath)) return basePath
+
+  // Strip .js extension (TS imports use .js for compiled output)
+  const stripped = stripJsExtension(basePath)
+
+  // Try extensions on stripped path
   for (const ext of EXTENSIONS) {
-    const withExt = basePath + ext
+    const withExt = stripped + ext
     if (existsSync(withExt)) return withExt
   }
 
-  // Try index files (barrel)
+  // Try extensions on original path (in case basePath has no extension)
+  if (stripped === basePath) {
+    // Already tried above, skip
+  } else {
+    // Also try index files on stripped
+    for (const ext of EXTENSIONS) {
+      const indexFile = join(stripped, `index${ext}`)
+      if (existsSync(indexFile)) return indexFile
+    }
+  }
+
+  // Try index files (barrel) on original
   for (const ext of EXTENSIONS) {
     const indexFile = join(basePath, `index${ext}`)
     if (existsSync(indexFile)) return indexFile
