@@ -32,6 +32,11 @@ export function searchByPattern(db: DB, pattern: string) {
            OR c.callee_name LIKE 'axios%'
            OR c.callee_name LIKE 'http.%'
            OR c.callee_name LIKE 'https.%'
+           OR c.callee_name LIKE 'requests.%'
+           OR c.callee_name LIKE 'urllib%'
+           OR c.callee_name LIKE 'http.Get%'
+           OR c.callee_name LIKE 'http.Post%'
+           OR c.callee_name LIKE 'http.NewRequest%'
         ORDER BY f.path
       `).all() as { callee_name: string; caller: string; path: string; line: number }[]
       if (rows.length === 0) return 'No HTTP calls found.'
@@ -47,9 +52,12 @@ export function searchByPattern(db: DB, pattern: string) {
         JOIN symbols s ON c.caller_symbol_id = s.id
         JOIN files f ON c.file_id = f.id
         WHERE c.callee_name LIKE 'process.env%'
+           OR c.callee_name LIKE 'os.environ%'
+           OR c.callee_name LIKE 'os.getenv%'
+           OR c.callee_name LIKE 'os.Getenv%'
         ORDER BY f.path
       `).all() as { callee_name: string; caller: string; path: string; line: number }[]
-      if (rows.length === 0) return 'No process.env access found.'
+      if (rows.length === 0) return 'No environment variable access found.'
       return `Environment variable access (${rows.length}):\n` + rows.map(r =>
         `  ${r.caller} accesses ${r.callee_name}  → ${r.path}:${r.line}`
       ).join('\n')
@@ -57,43 +65,24 @@ export function searchByPattern(db: DB, pattern: string) {
 
     case 'async_functions': {
       const rows = db.prepare(`
-        SELECT s.name, s.kind, s.is_exported, f.path, s.start_line, s.signature
-        FROM symbols s
-        JOIN files f ON s.file_id = f.id
-        WHERE (s.kind = 'function' OR s.kind = 'variable')
-          AND s.signature LIKE '%async%'
-        ORDER BY f.path
-      `).all() as { name: string; kind: string; is_exported: number; path: string; start_line: number; signature: string }[]
-
-      // Also check by looking at functions whose source starts with 'async'
-      // (arrow functions stored as variables may not have async in signature)
-      const rows2 = db.prepare(`
-        SELECT s.name, s.kind, s.is_exported, f.path, s.start_line, s.signature
+        SELECT s.name, s.kind, s.is_exported, f.path, s.start_line
         FROM symbols s
         JOIN files f ON s.file_id = f.id
         WHERE s.kind = 'function'
+          AND s.signature LIKE 'async %'
         ORDER BY f.path
-      `).all() as { name: string; kind: string; is_exported: number; path: string; start_line: number; signature: string | null }[]
+      `).all() as { name: string; kind: string; is_exported: number; path: string; start_line: number }[]
 
-      // Merge and deduplicate
-      const seen = new Set<string>()
-      const all = [...rows, ...rows2.filter(r => r.signature?.includes('async'))].filter(r => {
-        const key = `${r.path}:${r.name}`
-        if (seen.has(key)) return false
-        seen.add(key)
-        return true
-      })
-
-      if (all.length === 0) return 'No async functions found.'
-      return `Async functions (${all.length}):\n` + all.map(r => {
+      if (rows.length === 0) return 'No async functions found.'
+      return `Async functions (${rows.length}):\n` + rows.map(r => {
         const exp = r.is_exported ? 'export ' : ''
         return `  ${exp}${r.name}  → ${r.path}:${r.start_line}`
       }).join('\n')
     }
 
     case 'error_handlers': {
-      // We don't index try/catch directly, but we can find functions that call common error patterns
-      const rows = db.prepare(`
+      // Find functions that call .catch() or console.error
+      const callRows = db.prepare(`
         SELECT DISTINCT s.name, f.path, s.start_line
         FROM calls c
         JOIN symbols s ON c.caller_symbol_id = s.id
@@ -102,10 +91,29 @@ export function searchByPattern(db: DB, pattern: string) {
            OR c.callee_name LIKE 'console.error%'
         ORDER BY f.path
       `).all() as { name: string; path: string; start_line: number }[]
-      if (rows.length === 0) return 'No error handling patterns found (searching for .catch() and console.error calls).'
-      return `Error handling patterns (${rows.length}):\n` + rows.map(r =>
-        `  ${r.name}  → ${r.path}:${r.start_line}`
-      ).join('\n')
+
+      // Also find files with try/catch/except/recover via TF-IDF
+      const trycatchRows = db.prepare(`
+        SELECT DISTINCT f.path
+        FROM tfidf t
+        JOIN files f ON t.file_id = f.id
+        WHERE t.term IN ('catch', 'except', 'recover')
+        ORDER BY f.path
+      `).all() as { path: string }[]
+
+      const seen = new Set<string>()
+      const lines: string[] = []
+      for (const r of callRows) {
+        const key = `${r.path}:${r.name}`
+        if (!seen.has(key)) { seen.add(key); lines.push(`  ${r.name}  → ${r.path}:${r.start_line}`) }
+      }
+      const callPaths = new Set(callRows.map(r => r.path))
+      for (const r of trycatchRows) {
+        if (!callPaths.has(r.path)) lines.push(`  (try/catch)  → ${r.path}`)
+      }
+
+      if (lines.length === 0) return 'No error handling patterns found.'
+      return `Error handling patterns (${lines.length}):\n` + lines.join('\n')
     }
 
     case 'todos': {

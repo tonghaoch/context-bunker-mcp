@@ -8,8 +8,11 @@ interface TsConfigPaths {
 
 let cachedTsConfig: TsConfigPaths | null = null
 let cachedProjectRoot: string | null = null
+let cachedGoModule: string | null = null
+let cachedGoModRoot: string | null = null
 
 const EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']
+const PY_EXTENSIONS = ['.py']
 
 function loadTsConfig(projectRoot: string): TsConfigPaths {
   if (cachedProjectRoot === projectRoot && cachedTsConfig) return cachedTsConfig
@@ -75,11 +78,75 @@ function tryResolveFile(basePath: string): string | null {
   return null
 }
 
+function loadGoModule(projectRoot: string): string | null {
+  if (cachedGoModRoot === projectRoot) return cachedGoModule
+  cachedGoModRoot = projectRoot
+  const goModPath = join(projectRoot, 'go.mod')
+  if (!existsSync(goModPath)) { cachedGoModule = null; return null }
+  try {
+    const raw = readFileSync(goModPath, 'utf-8')
+    const match = raw.match(/^module\s+(\S+)/m)
+    cachedGoModule = match?.[1] ?? null
+  } catch { cachedGoModule = null }
+  return cachedGoModule
+}
+
+function tryResolvePython(basePath: string): string | null {
+  for (const ext of PY_EXTENSIONS) {
+    if (existsSync(basePath + ext)) return basePath + ext
+  }
+  // Check __init__.py (package directory)
+  const initPath = join(basePath, '__init__.py')
+  if (existsSync(initPath)) return initPath
+  return null
+}
+
+function resolvePythonImport(
+  fromPath: string,
+  importingFile: string,
+  projectRoot: string,
+): { resolved: string; isExternal: boolean } {
+  // Relative import: starts with dots
+  if (fromPath.startsWith('.')) {
+    const dots = fromPath.match(/^(\.+)/)![1]
+    const rest = fromPath.slice(dots.length).replace(/\./g, '/')
+    const dir = dirname(importingFile)
+    // Each dot beyond the first goes up one directory
+    let base = dir
+    for (let i = 1; i < dots.length; i++) base = dirname(base)
+    const absBase = rest ? join(base, rest) : base
+    const resolved = tryResolvePython(absBase)
+    if (resolved) return { resolved: relative(projectRoot, resolved), isExternal: false }
+    return { resolved: relative(projectRoot, absBase), isExternal: false }
+  }
+  // Absolute import: check if it maps to a local file
+  const asPath = fromPath.replace(/\./g, '/')
+  const absBase = join(projectRoot, asPath)
+  const resolved = tryResolvePython(absBase)
+  if (resolved) return { resolved: relative(projectRoot, resolved), isExternal: false }
+  return { resolved: fromPath, isExternal: true }
+}
+
+function resolveGoImport(
+  fromPath: string,
+  projectRoot: string,
+): { resolved: string; isExternal: boolean } {
+  const moduleName = loadGoModule(projectRoot)
+  if (moduleName && fromPath.startsWith(moduleName + '/')) {
+    const localPath = fromPath.slice(moduleName.length + 1)
+    return { resolved: localPath, isExternal: false }
+  }
+  return { resolved: fromPath, isExternal: true }
+}
+
 export function resolveImportPath(
   fromPath: string,
   importingFile: string,
-  projectRoot: string
+  projectRoot: string,
+  language?: string,
 ): { resolved: string; isExternal: boolean } {
+  if (language === 'python') return resolvePythonImport(fromPath, importingFile, projectRoot)
+  if (language === 'go') return resolveGoImport(fromPath, projectRoot)
   // External module (no relative path prefix, no alias match)
   if (!fromPath.startsWith('.') && !fromPath.startsWith('/')) {
     // Check tsconfig paths first
@@ -131,4 +198,6 @@ export function resolveImportPath(
 export function clearResolverCache() {
   cachedTsConfig = null
   cachedProjectRoot = null
+  cachedGoModule = null
+  cachedGoModRoot = null
 }

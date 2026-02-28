@@ -182,7 +182,7 @@ export function startSession(db: DB) {
   return db.prepare('INSERT INTO sessions (started_at) VALUES (?)').run(Date.now())
 }
 
-export function endSession(db: DB, sessionId: number, snapshot: Record<string, string>) {
+export function endSession(db: DB, sessionId: number, snapshot: Record<string, unknown>) {
   db.prepare('UPDATE sessions SET ended_at = ?, file_snapshot = ? WHERE id = ?')
     .run(Date.now(), JSON.stringify(snapshot), sessionId)
 }

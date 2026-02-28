@@ -80,10 +80,10 @@ context-bunker is **not** a grep replacement. It's for things grep structurally 
 | Priority | Languages | Status |
 |----------|-----------|--------|
 | **P0** | TypeScript, JavaScript (TSX/JSX) | ✅ Complete |
-| **P1** | Python, Go | 🔲 Planned |
-| **P2** | Rust, Java, C/C++ | 🔲 Planned |
+| **P1** | Python, Go | ✅ Complete |
+| **P2** | Rust, Java, C/C++ | 🔲 Planned (grammars loaded, extractors not yet written) |
 
-Tree-sitter grammars for all languages are already vendored — adding a new language is mostly writing extraction queries.
+Tree-sitter WASM grammars are loaded from `tree-sitter-wasms` (npm dependency). Adding a new language requires writing an extractor in `src/languages/`.
 
 ## Setup
 

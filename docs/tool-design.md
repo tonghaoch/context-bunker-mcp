@@ -8,7 +8,7 @@
 4. **Persistent** — index survives across sessions (SQLite)
 5. **Incremental** — file watcher re-indexes only changed files
 
-## Core Tools (11 + 2 housekeeping)
+## Core Tools (11 + 4 housekeeping = 15 total)
 
 ---
 
@@ -209,7 +209,7 @@ processPayment()                    src/payments/processor.ts:15
         "file": "src/auth/middleware.ts",
         "symbolsAdded": ["rateLimiter"],
         "symbolsRemoved": ["deprecatedCheck"],
-        "symbolsModified": ["authMiddleware"]
+        "signatureChanged": ["authMiddleware"]
       }
     ],
     "deleted": ["src/utils/legacy.ts"]
@@ -286,12 +286,12 @@ processPayment()                    src/payments/processor.ts:15
 { "pattern": "http_calls" }
 ```
 
-**Supported patterns:**
-- `http_calls` — functions containing `fetch()`, `axios.*`, `http.*`
-- `env_access` — code accessing `process.env.*`
-- `error_handlers` — `try/catch` blocks
-- `async_functions` — all `async` function definitions
-- `todos` — functions containing `// TODO` or `// FIXME` comments
+**Supported patterns (multi-language):**
+- `http_calls` — functions calling `fetch()`, `axios.*`, `http.*`, `requests.*` (Python), `http.Get/Post` (Go)
+- `env_access` — code accessing `process.env.*`, `os.environ/os.getenv` (Python), `os.Getenv` (Go)
+- `error_handlers` — `.catch()`, `console.error` calls + files with try/catch/except/recover (via TF-IDF)
+- `async_functions` — all `async` function definitions (TS/JS/Python)
+- `todos` — files containing `TODO`, `FIXME`, `HACK`, `XXX` comments
 - `test_files` — files matching test patterns
 
 **Output:**

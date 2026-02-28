@@ -2,7 +2,7 @@
 
 ## Overview
 
-**Goal:** Ship a working MCP server that indexes TypeScript/JavaScript codebases and exposes 13 tools to AI coding agents.
+**Goal:** Ship a working MCP server that indexes codebases and exposes 15 tools to AI coding agents.
 
 **Target:** MVP in ~5 weeks. Ship with TS/JS support, expand languages from community PRs.
 
@@ -58,11 +58,11 @@ bun init
 
 **Files:**
 - `src/indexer/parser.ts` — initialize web-tree-sitter, load WASM grammars, parse file → AST
-- `grammars/` — vendor `tree-sitter-typescript.wasm`, `tree-sitter-tsx.wasm`, `tree-sitter-javascript.wasm`
+- WASM grammars loaded from `tree-sitter-wasms` npm package at runtime
 
 **Key decisions:**
-- Vendor WASM files in repo (not npm download at runtime) — ensures offline install works
-- Language detection by file extension (`.ts` → typescript, `.tsx` → tsx, `.js/.jsx` → javascript)
+- WASM grammars come from `tree-sitter-wasms` dependency (not vendored in repo)
+- Language detection by file extension (`.ts` → typescript, `.tsx` → tsx, `.js/.jsx` → javascript, `.py` → python, `.go` → go)
 
 **Test:** Parse a `.ts` file, walk the AST, print node types.
 
@@ -271,7 +271,7 @@ Add `search_code` tool (or integrate into `find_symbol` as fallback):
 - Score files by TF-IDF similarity
 - Return top-N files with matched terms highlighted
 
-**Milestone:** All 13 tools working. Full feature set.
+**Milestone:** All 15 tools working. Full feature set.
 
 ---
 
@@ -306,8 +306,8 @@ Add `search_code` tool (or integrate into `find_symbol` as fallback):
 
 **Fixture projects:**
 - `tests/fixtures/small-ts/` — 5-file TS project
-- `tests/fixtures/medium-ts/` — 50-file TS project with barrel files
-- `tests/fixtures/monorepo/` — workspace with multiple packages
+- `tests/fixtures/small-py/` — 4-file Python project (functions, classes, imports, async, decorators)
+- `tests/fixtures/small-go/` — 3-file Go project with go.mod (functions, methods, structs, interfaces)
 
 ### 5.4 README + Demo
 
@@ -337,8 +337,8 @@ Add `search_code` tool (or integrate into `find_symbol` as fallback):
 
 | Priority | Feature | Effort |
 |----------|---------|--------|
-| P1 | Python language support | 1-2 days (new tree-sitter queries) |
-| P1 | Go language support | 1-2 days |
+| ~~P1~~ | ~~Python language support~~ | ✅ Implemented |
+| ~~P1~~ | ~~Go language support~~ | ✅ Implemented |
 | P1 | SSE transport (for IDE integrations) | 1 day |
 | P2 | Rust, Java, C/C++ support | 1-2 days each |
 | P2 | Monorepo-aware indexing (workspaces) | 3-5 days |
@@ -405,6 +405,6 @@ Add `search_code` tool (or integrate into `find_symbol` as fallback):
 30. README, demo GIF
 
 ### Week 6 (Phase 6: Publish)
-31. npm publish prep, vendor WASM grammars
+31. npm publish prep (WASM grammars come from tree-sitter-wasms dependency)
 32. MCP registry listings
 33. Social launch

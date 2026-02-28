@@ -89,13 +89,15 @@ function extractFunctionDecl(node: SyntaxNode): ExtractedSymbol | null {
   if (!name) return null
   const params = findChild(node, 'formal_parameters')
   const retType = findChild(node, 'type_annotation')
+  const isAsync = node.children.some(c => c.text === 'async')
+  const sig = buildSignature(params, retType)
   return {
     name: getTextOf(name),
     kind: 'function',
     startLine: node.startPosition.row + 1,
     endLine: node.endPosition.row + 1,
     isExported: isExported(node),
-    signature: buildSignature(params, retType),
+    signature: isAsync && sig ? `async ${sig}` : sig,
     jsdoc: getJsDoc(node),
   }
 }
@@ -106,13 +108,15 @@ function extractArrowInVariable(varDecl: SyntaxNode, lexDecl: SyntaxNode): Extra
   if (!nameNode || !arrow) return null
   const params = findChild(arrow, 'formal_parameters')
   const retType = findChild(arrow, 'type_annotation')
+  const isAsync = arrow.children.some(c => c.text === 'async')
+  const sig = buildSignature(params, retType)
   return {
     name: getTextOf(nameNode),
     kind: 'function',
     startLine: lexDecl.startPosition.row + 1,
     endLine: lexDecl.endPosition.row + 1,
     isExported: isExported(lexDecl),
-    signature: buildSignature(params, retType),
+    signature: isAsync && sig ? `async ${sig}` : sig,
     jsdoc: getJsDoc(lexDecl),
   }
 }

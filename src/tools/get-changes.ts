@@ -1,24 +1,20 @@
-import { readFileSync, statSync } from 'node:fs'
-import { join } from 'node:path'
-import { createHash } from 'node:crypto'
 import type { DB } from '../store/db.js'
 import { getLastSession, getAllFiles, getSymbolsByFile, getFile } from '../store/queries.js'
 
-function hashFile(fullPath: string): string | null {
-  try {
-    const content = readFileSync(fullPath, 'utf-8')
-    return createHash('sha256').update(content).digest('hex').slice(0, 16)
-  } catch { return null }
-}
+type SnapshotEntry = string | { hash: string; symbols: string[] }
 
-export function getChangesSinceLastSession(db: DB, projectRoot: string) {
+export function getChangesSinceLastSession(db: DB, _projectRoot: string) {
   const session = getLastSession(db)
   if (!session?.file_snapshot) {
     return 'No previous session found. This is the first run — all files are new.'
   }
 
-  let snapshot: Record<string, string>
-  try { snapshot = JSON.parse(session.file_snapshot) } catch { return 'Corrupted session snapshot.' }
+  let rawSnapshot: Record<string, SnapshotEntry>
+  try { rawSnapshot = JSON.parse(session.file_snapshot) } catch { return 'Corrupted session snapshot.' }
+
+  // Normalize: support both old format (string hash) and new format ({ hash, symbols })
+  const getHash = (entry: SnapshotEntry) => typeof entry === 'string' ? entry : entry.hash
+  const getSymbols = (entry: SnapshotEntry) => typeof entry === 'string' ? null : entry.symbols
 
   const currentFiles = getAllFiles(db)
   const currentMap = new Map(currentFiles.map(f => [f.path, f.hash]))
@@ -29,28 +25,29 @@ export function getChangesSinceLastSession(db: DB, projectRoot: string) {
 
   // Files in current index but not in snapshot → added
   for (const f of currentFiles) {
-    if (!(f.path in snapshot)) {
+    if (!(f.path in rawSnapshot)) {
       const syms = getSymbolsByFile(db, f.id)
       added.push({ file: f.path, symbols: syms.filter(s => s.is_exported).map(s => s.name) })
     }
   }
 
   // Files in both but hash changed → modified
-  for (const [path, oldHash] of Object.entries(snapshot)) {
+  for (const [path, entry] of Object.entries(rawSnapshot)) {
     const currentHash = currentMap.get(path)
-    if (currentHash && currentHash !== oldHash) {
-      // Compare symbols — we only have current symbols in DB
-      // For a simple diff, just report the file as modified with current exports
+    if (currentHash && currentHash !== getHash(entry)) {
       const fileRow = getFile(db, path)
       if (fileRow) {
-        const syms = getSymbolsByFile(db, fileRow.id).filter(s => s.is_exported).map(s => s.name)
-        modified.push({ file: path, symbolsAdded: syms, symbolsRemoved: [] })
+        const currentSyms = getSymbolsByFile(db, fileRow.id).filter(s => s.is_exported).map(s => s.name)
+        const oldSyms = getSymbols(entry)
+        const symbolsAdded = oldSyms ? currentSyms.filter(s => !oldSyms.includes(s)) : currentSyms
+        const symbolsRemoved = oldSyms ? oldSyms.filter(s => !currentSyms.includes(s)) : []
+        modified.push({ file: path, symbolsAdded, symbolsRemoved })
       }
     }
   }
 
   // Files in snapshot but not in current → deleted
-  for (const path of Object.keys(snapshot)) {
+  for (const path of Object.keys(rawSnapshot)) {
     if (!currentMap.has(path)) deleted.push(path)
   }
 
@@ -77,8 +74,11 @@ export function getChangesSinceLastSession(db: DB, projectRoot: string) {
   if (modified.length > 0) {
     lines.push('Modified:')
     for (const m of modified) {
-      const syms = m.symbolsAdded.length > 0 ? ` [exports: ${m.symbolsAdded.join(', ')}]` : ''
-      lines.push(`  ~ ${m.file}${syms}`)
+      const parts: string[] = []
+      if (m.symbolsAdded.length > 0) parts.push(`+${m.symbolsAdded.join(', ')}`)
+      if (m.symbolsRemoved.length > 0) parts.push(`-${m.symbolsRemoved.join(', ')}`)
+      const detail = parts.length > 0 ? ` [${parts.join('; ')}]` : ''
+      lines.push(`  ~ ${m.file}${detail}`)
     }
     lines.push('')
   }
@@ -91,10 +91,13 @@ export function getChangesSinceLastSession(db: DB, projectRoot: string) {
   return lines.join('\n')
 }
 
-// Build a snapshot of current file hashes for saving at session end
-export function buildFileSnapshot(db: DB): Record<string, string> {
+// Build a snapshot of current file hashes + symbols for saving at session end
+export function buildFileSnapshot(db: DB): Record<string, { hash: string; symbols: string[] }> {
   const files = getAllFiles(db)
-  const snapshot: Record<string, string> = {}
-  for (const f of files) snapshot[f.path] = f.hash
+  const snapshot: Record<string, { hash: string; symbols: string[] }> = {}
+  for (const f of files) {
+    const syms = getSymbolsByFile(db, f.id).filter(s => s.is_exported).map(s => s.name)
+    snapshot[f.path] = { hash: f.hash, symbols: syms }
+  }
   return snapshot
 }

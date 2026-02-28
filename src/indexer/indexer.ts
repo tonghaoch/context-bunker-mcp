@@ -2,7 +2,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative, resolve, extname } from 'node:path'
 import { createHash } from 'node:crypto'
 import type { DB } from '../store/db.js'
-import { isSupportedFile, parseFile, initParser } from './parser.js'
+import { isSupportedFile, parseFile, initParser, getLanguageName } from './parser.js'
 import { extract } from './extractor.js'
 import { resolveImportPath } from './resolver.js'
 import { updateFileTFIDF, recomputeIDF } from './tfidf.js'
@@ -12,7 +12,7 @@ import {
   insertSymbol, insertImport, insertExport, insertCall,
   getSymbolByNameAndFile,
 } from '../store/queries.js'
-import type { Config } from '../config.js'
+import { type Config, SUPPORTED_LANGUAGES } from '../config.js'
 
 const IGNORED_DIRS = new Set([
   'node_modules', '.git', 'dist', 'build', 'coverage',
@@ -87,8 +87,7 @@ export async function indexFile(db: DB, filePath: string, projectRoot: string, c
   if (!result) return false
 
   // Store — wrap in transaction
-  const fileResult = upsertFile(db, relPath, hash, mtime, lines)
-  const fileId = existing?.id ?? Number(fileResult.lastInsertRowid)
+  upsertFile(db, relPath, hash, mtime, lines)
 
   // Get file ID (upsert may not give us the ID on update)
   const fileRow = getFile(db, relPath)
@@ -107,8 +106,9 @@ export async function indexFile(db: DB, filePath: string, projectRoot: string, c
   }
 
   // Insert imports with resolved paths
+  const lang = getLanguageName(filePath) ?? undefined
   for (const imp of result.imports) {
-    const { resolved, isExternal } = resolveImportPath(imp.fromPath, resolve(projectRoot, relPath), projectRoot)
+    const { resolved, isExternal } = resolveImportPath(imp.fromPath, resolve(projectRoot, relPath), projectRoot, lang)
     insertImport(db, fid, imp.symbol, resolved, imp.isTypeOnly, isExternal)
   }
 
@@ -148,11 +148,17 @@ export async function indexProject(db: DB, projectRoot: string, log?: (...args: 
   await initParser()
 
   const allFiles = walkDir(projectRoot)
-  log?.(`Found ${allFiles.length} files to index`)
+  // Filter by configured languages
+  const allowedLangs = config?.languages ? new Set(config.languages) : SUPPORTED_LANGUAGES
+  const filteredFiles = allFiles.filter(f => {
+    const lang = getLanguageName(f)
+    return !lang || allowedLangs.has(lang)
+  })
+  log?.(`Found ${filteredFiles.length} files to index (${allFiles.length - filteredFiles.length} filtered by language config)`)
 
   let indexed = 0, skipped = 0, errors = 0
 
-  for (const filePath of allFiles) {
+  for (const filePath of filteredFiles) {
     try {
       const changed = await indexFile(db, filePath, projectRoot, config)
       if (changed) indexed++

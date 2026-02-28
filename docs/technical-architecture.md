@@ -66,7 +66,7 @@ const db = isBun
 │  │  registerTool('get_smart_context', ...)                     │  │
 │  │  registerTool('find_symbol', ...)                           │  │
 │  │  registerTool('get_dependency_graph', ...)                  │  │
-│  │  ... (13 tools total)                                       │  │
+│  │  ... (15 tools total)                                       │  │
 │  └───────────────────────┬────────────────────────────────────┘  │
 │                          │                                       │
 │  ┌───────────────────────▼────────────────────────────────────┐  │
@@ -169,7 +169,7 @@ CREATE TABLE sessions (
   id INTEGER PRIMARY KEY,
   started_at INTEGER NOT NULL,
   ended_at INTEGER,
-  file_snapshot TEXT            -- JSON: {path: hash} at session end
+  file_snapshot TEXT            -- JSON: {path: {hash, symbols[]}} at session end
 );
 
 -- Indexes
@@ -196,17 +196,17 @@ CREATE INDEX idx_calls_callee ON calls(callee_name);
 
 web-tree-sitter runs in any Node/Bun environment without compilation. The WASM overhead is ~2-5x slower than native, but parsing a 1000-line file takes <10ms — well within budget.
 
-### Language Support (MVP)
+### Language Support
 
-| Language | Tree-sitter grammar | Priority |
-|----------|-------------------|----------|
-| TypeScript/TSX | `tree-sitter-typescript` | P0 |
-| JavaScript/JSX | `tree-sitter-javascript` | P0 |
-| Python | `tree-sitter-python` | P1 |
-| Go | `tree-sitter-go` | P1 |
-| Rust | `tree-sitter-rust` | P2 |
-| Java | `tree-sitter-java` | P2 |
-| C/C++ | `tree-sitter-c`, `tree-sitter-cpp` | P2 |
+| Language | Tree-sitter grammar | Extractor | Priority |
+|----------|-------------------|-----------|----------|
+| TypeScript/TSX | `tree-sitter-typescript` | ✅ `languages/typescript.ts` | P0 |
+| JavaScript/JSX | `tree-sitter-javascript` | ✅ `languages/javascript.ts` | P0 |
+| Python | `tree-sitter-python` | ✅ `languages/python.ts` | P1 |
+| Go | `tree-sitter-go` | ✅ `languages/go.ts` | P1 |
+| Rust | `tree-sitter-rust` | 🔲 Grammar only | P2 |
+| Java | `tree-sitter-java` | 🔲 Grammar only | P2 |
+| C/C++ | `tree-sitter-c`, `tree-sitter-cpp` | 🔲 Not yet | P2 |
 
 ### Symbol Extraction (per language)
 
@@ -248,16 +248,30 @@ Mark file as indexed (hash + timestamp)
 
 ### Import Path Resolution
 
+Language-aware resolution via `resolveImportPath(fromPath, importingFile, projectRoot, language?)`:
+
+**TypeScript/JavaScript:**
 ```typescript
-// Handles:
-"./jwt"           → src/auth/jwt.ts (relative)
+"./jwt"           → src/auth/jwt.ts (relative, tries .ts/.tsx/.js extensions)
 "../models/user"  → src/models/user.ts (relative)
 "@/utils/crypto"  → src/utils/crypto.ts (tsconfig paths)
 "express"         → (external, mark as is_external=true)
 "."               → index.ts barrel (resolve to actual re-exports)
 ```
+Uses `tsconfig.json` `paths` and `baseUrl` if present.
 
-Uses `tsconfig.json` `paths` and `baseUrl` if present. Falls back to Node resolution algorithm.
+**Python:**
+```python
+".utils"          → utils.py or utils/__init__.py (relative, dots = directory levels)
+"..models"        → ../models.py or ../models/__init__.py
+"os"              → (external)
+```
+
+**Go:**
+```go
+"fmt"                         → (external)
+"example.com/myapp/auth"      → auth/ (local, resolved via go.mod module name)
+```
 
 ## 7. Performance Budget
 
@@ -272,68 +286,68 @@ Uses `tsconfig.json` `paths` and `baseUrl` if present. Falls back to Node resolu
 | `get_call_graph` depth=2 | <30ms | BFS on call graph |
 | `get_project_map` | <100ms | Full table scan + aggregation |
 
-## 8. File Structure (Planned)
+## 8. File Structure
 
 ```
 context-bunker-mcp/
 ├── package.json
 ├── tsconfig.json
 ├── src/
-│   ├── index.ts                  # Entry point: MCP server setup
-│   ├── server.ts                 # Tool registration + router
+│   ├── index.ts                  # Entry point: CLI args, MCP server setup
+│   ├── server.ts                 # Tool registration (15 tools)
+│   ├── config.ts                 # .context-bunker.json config loading + validation
 │   │
 │   ├── tools/                    # One file per tool
-│   │   ├── get-smart-context.ts
-│   │   ├── get-dependency-graph.ts
 │   │   ├── find-symbol.ts
 │   │   ├── find-references.ts
+│   │   ├── get-smart-context.ts
+│   │   ├── get-dependency-graph.ts
 │   │   ├── get-call-graph.ts
+│   │   ├── get-symbol-source.ts
+│   │   ├── get-project-map.ts
+│   │   ├── get-file-summary.ts
 │   │   ├── get-changes.ts
 │   │   ├── find-unused-exports.ts
-│   │   ├── get-symbol-source.ts
 │   │   ├── search-by-pattern.ts
-│   │   ├── get-file-summary.ts
-│   │   ├── get-project-map.ts
-│   │   ├── reindex.ts
-│   │   └── get-status.ts
+│   │   └── search-code.ts
 │   │
 │   ├── indexer/                  # Indexing pipeline
 │   │   ├── indexer.ts            # Main indexer orchestrator
-│   │   ├── parser.ts             # Tree-sitter wrapper
-│   │   ├── extractor.ts          # Symbol/import/export/call extraction
-│   │   ├── resolver.ts           # Import path resolution
+│   │   ├── parser.ts             # Tree-sitter wrapper (WASM from tree-sitter-wasms npm)
+│   │   ├── extractor.ts          # Dispatches to language extractors
+│   │   ├── resolver.ts           # Language-aware import path resolution
 │   │   ├── watcher.ts            # File watcher for incremental updates
 │   │   └── tfidf.ts              # TF-IDF search index builder
 │   │
 │   ├── store/                    # SQLite data layer
-│   │   ├── db.ts                 # Database connection + schema
-│   │   ├── queries.ts            # Reusable query functions
-│   │   └── migrations.ts         # Schema versioning
+│   │   ├── db.ts                 # Database connection (Bun/better-sqlite3)
+│   │   ├── schema.ts             # Schema + indices
+│   │   └── queries.ts            # ~40 reusable query functions
 │   │
-│   ├── languages/                # Per-language tree-sitter queries
-│   │   ├── typescript.ts
-│   │   ├── javascript.ts
-│   │   ├── python.ts
-│   │   └── go.ts
+│   ├── languages/                # Per-language AST extractors
+│   │   ├── typescript.ts         # TS/TSX extraction (P0)
+│   │   ├── javascript.ts         # JS/JSX — re-exports TS extractor (P0)
+│   │   ├── python.ts             # Python extraction (P1)
+│   │   └── go.ts                 # Go extraction (P1)
 │   │
 │   └── utils/
-│       ├── paths.ts              # Path resolution utilities
-│       ├── hash.ts               # File hashing
-│       └── format.ts             # Output formatting
-│
-├── grammars/                     # Tree-sitter WASM grammars (vendored)
-│   ├── tree-sitter-typescript.wasm
-│   ├── tree-sitter-javascript.wasm
-│   └── ...
+│       └── paths.ts              # Path normalization
 │
 ├── tests/
-│   ├── tools/                    # Tool-level tests
-│   ├── indexer/                  # Indexer tests
-│   └── fixtures/                 # Test codebases
+│   ├── indexer.test.ts           # TS indexer tests
+│   ├── tools.test.ts             # Tool function tests
+│   ├── python.test.ts            # Python extractor tests
+│   ├── go.test.ts                # Go extractor tests
+│   └── fixtures/
+│       ├── small-ts/             # 5-file TS project
+│       ├── small-py/             # 4-file Python project
+│       └── small-go/             # 3-file Go project
 │
 └── docs/
     ├── market-analysis.md
     ├── competitor-analysis.md
     ├── tool-design.md
+    ├── cli-comparison.md
+    ├── implementation-plan.md
     └── technical-architecture.md  # (this file)
 ```

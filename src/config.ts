@@ -10,10 +10,12 @@ export interface Config {
 
 const CONFIG_FILE = '.context-bunker.json'
 
+export const SUPPORTED_LANGUAGES = new Set(['typescript', 'javascript', 'python', 'go'])
+
 const DEFAULT_CONFIG: Config = {
   include: ['src/', 'lib/', 'app/', 'packages/'],
   exclude: ['**/*.test.ts', '**/*.spec.ts', '**/__tests__/**', '**/__mocks__/**'],
-  languages: ['typescript', 'javascript'],
+  languages: ['typescript', 'javascript', 'python', 'go'],
   maxFileSize: 1_048_576, // 1MB
 }
 
@@ -24,12 +26,18 @@ export function loadConfig(projectRoot: string): Config {
   try {
     const raw = readFileSync(configPath, 'utf-8')
     const parsed = JSON.parse(raw)
-    return {
+    const config = {
       include: parsed.include ?? DEFAULT_CONFIG.include,
       exclude: parsed.exclude ?? DEFAULT_CONFIG.exclude,
       languages: parsed.languages ?? DEFAULT_CONFIG.languages,
       maxFileSize: parsed.maxFileSize ?? DEFAULT_CONFIG.maxFileSize,
     }
+    // Warn on unsupported languages
+    const invalid = config.languages.filter((l: string) => !SUPPORTED_LANGUAGES.has(l))
+    if (invalid.length > 0) {
+      console.error(`[context-bunker] Warning: unsupported languages: ${invalid.join(', ')}. Supported: ${[...SUPPORTED_LANGUAGES].join(', ')}`)
+    }
+    return config
   } catch {
     return { ...DEFAULT_CONFIG }
   }
