@@ -275,15 +275,15 @@ Add `search_code` tool (or integrate into `find_symbol` as fallback):
 
 ---
 
-## Phase 5: Polish + Ship (Week 5)
+## Phase 5: Polish (Week 5)
 
 ### 5.1 CLI Polish
 
-- `npx context-bunker` — auto-detect project root, index, start server
-- `npx context-bunker --init` — create config file
-- `npx context-bunker --status` — show index stats
+- `bunx context-bunker` — auto-detect project root, index, start server
+- `bunx context-bunker --init` — create config file
+- `bunx context-bunker --status` — show index stats
 - `--verbose` / `--quiet` flags
-- Graceful shutdown (save session snapshot)
+- Graceful shutdown (save session snapshot) ✅ (done in Phase 4)
 
 ### 5.2 Config File (`.context-bunker.json`)
 
@@ -300,7 +300,7 @@ Add `search_code` tool (or integrate into `find_symbol` as fallback):
 
 | Test Type | Tool | Coverage |
 |-----------|------|----------|
-| Unit | bun test / vitest | Extractor, resolver, queries, TF-IDF |
+| Unit | bun test | Extractor, resolver, queries, TF-IDF |
 | Integration | bun test | Index a fixture project → query tools → validate output |
 | Snapshot | bun test | Tool outputs against known codebases |
 
@@ -315,11 +315,21 @@ Add `search_code` tool (or integrate into `find_symbol` as fallback):
 - Installation instructions for Claude Code, Cursor, Windsurf
 - Benchmark: token savings on a real project
 
-### 5.5 npm Publish
+---
+
+## Phase 6: Publish (Week 6)
+
+### 6.1 npm Publish
 
 - `npm publish` as `context-bunker`
-- Ensure `npx context-bunker` works out of the box
+- Ensure `bunx context-bunker` / `npx context-bunker` works out of the box
 - Vendor tree-sitter WASM grammars in the package
+
+### 6.2 Distribution
+
+- GitHub releases with changelog
+- MCP registry listing (PulseMCP, mcpservers.org, LobeHub)
+- Social: Reddit (r/javascript, r/typescript), Hacker News, Twitter/X
 
 ---
 
@@ -388,8 +398,13 @@ Add `search_code` tool (or integrate into `find_symbol` as fallback):
 25. `src/tools/reindex.ts`
 26. Update `src/tools/get-status.ts` with token tracking
 
-### Week 5
+### Week 5 (Phase 5: Polish)
 27. CLI polish (`src/index.ts` — args, config, graceful shutdown)
 28. Config file support (`.context-bunker.json`)
 29. Tests (`tests/`)
-30. README, demo GIF, npm publish prep
+30. README, demo GIF
+
+### Week 6 (Phase 6: Publish)
+31. npm publish prep, vendor WASM grammars
+32. MCP registry listings
+33. Social launch
