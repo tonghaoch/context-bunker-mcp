@@ -130,8 +130,8 @@ bun run src/index.ts --verbose
 | **Phase 2** | Indexing engine — extractor, resolver, watcher, TF-IDF | ✅ Complete |
 | **Phase 3** | Core tools — 7 main intelligence tools | ✅ Complete |
 | **Phase 4** | Unique tools — session diff, dead code, patterns, search, summaries | ✅ Complete |
-| **Phase 5** | Polish — CLI, config, tests, demo | 🔲 Next |
-| **Phase 6** | Publish — npm, MCP registries, launch | 🔲 Planned |
+| **Phase 5** | Polish — CLI, config, tests | ✅ Complete |
+| **Phase 6** | Publish — npm, MCP registries, launch | 🔲 Next |
 
 ## License
 

@@ -12,6 +12,7 @@ import {
   insertSymbol, insertImport, insertExport, insertCall,
   getSymbolByNameAndFile,
 } from '../store/queries.js'
+import type { Config } from '../config.js'
 
 const IGNORED_DIRS = new Set([
   'node_modules', '.git', 'dist', 'build', 'coverage',
@@ -51,8 +52,17 @@ export interface IndexResult {
   timeMs: number
 }
 
-export async function indexFile(db: DB, filePath: string, projectRoot: string): Promise<boolean> {
+export async function indexFile(db: DB, filePath: string, projectRoot: string, config?: Config): Promise<boolean> {
   const relPath = relative(projectRoot, resolve(filePath))
+
+  // Skip files exceeding max size
+  if (config?.maxFileSize) {
+    try {
+      const stat = statSync(filePath)
+      if (stat.size > config.maxFileSize) return false
+    } catch { return false }
+  }
+
   let content: string
   try {
     content = readFileSync(filePath, 'utf-8')
@@ -133,7 +143,7 @@ export async function removeFile(db: DB, filePath: string, projectRoot: string) 
   deleteFile(db, relPath)
 }
 
-export async function indexProject(db: DB, projectRoot: string, log?: (...args: unknown[]) => void): Promise<IndexResult> {
+export async function indexProject(db: DB, projectRoot: string, log?: (...args: unknown[]) => void, config?: Config): Promise<IndexResult> {
   const t0 = performance.now()
   await initParser()
 
@@ -142,10 +152,9 @@ export async function indexProject(db: DB, projectRoot: string, log?: (...args: 
 
   let indexed = 0, skipped = 0, errors = 0
 
-  // Index files (sequential for now — tree-sitter WASM is sync per parse)
   for (const filePath of allFiles) {
     try {
-      const changed = await indexFile(db, filePath, projectRoot)
+      const changed = await indexFile(db, filePath, projectRoot, config)
       if (changed) indexed++
       else skipped++
     } catch (e) {
