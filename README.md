@@ -77,7 +77,7 @@ context-bunker is **not** a grep replacement. It's for things grep structurally 
 
 | Priority | Languages | Status |
 |----------|-----------|--------|
-| **P0** | TypeScript, JavaScript (TSX/JSX) | 🔵 In progress |
+| **P0** | TypeScript, JavaScript (TSX/JSX) | ✅ Complete |
 | **P1** | Python, Go | 🔲 Planned |
 | **P2** | Rust, Java, C/C++ | 🔲 Planned |
 
@@ -110,7 +110,7 @@ claude mcp add context-bunker -- bun /path/to/context-bunker/src/index.ts
 ### Standalone
 ```bash
 # Clone + install
-git clone https://github.com/user/context-bunker-mcp.git
+git clone https://github.com/tonghaoch/context-bunker-mcp.git
 cd context-bunker-mcp
 bun install
 
@@ -126,8 +126,8 @@ bun run src/index.ts --verbose
 | Phase | Description | Status |
 |-------|-------------|--------|
 | **Phase 1** | Foundation — scaffold, SQLite, tree-sitter, MCP shell | ✅ Complete |
-| **Phase 2** | Indexing engine — extractor, resolver, watcher, TF-IDF | 🔲 Next |
-| **Phase 3** | Core tools — 7 main intelligence tools | 🔲 Planned |
+| **Phase 2** | Indexing engine — extractor, resolver, watcher, TF-IDF | ✅ Complete |
+| **Phase 3** | Core tools — 7 main intelligence tools | 🔲 Next |
 | **Phase 4** | Unique tools — session diff, dead code, patterns, summaries | 🔲 Planned |
 | **Phase 5** | Polish — CLI, config, tests, publish | 🔲 Planned |
 
