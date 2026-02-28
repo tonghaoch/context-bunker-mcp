@@ -1,9 +1,13 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
-import { resolve } from 'node:path'
+import { resolve, join } from 'node:path'
+import { existsSync } from 'node:fs'
 import type { DB } from './store/db.js'
-import { getStats } from './store/queries.js'
+import { openDatabase } from './store/db.js'
+import { getStats, startSession } from './store/queries.js'
 import { indexProject, indexFile } from './indexer/indexer.js'
+import { initParser } from './indexer/parser.js'
+import { loadConfig } from './config.js'
 import { findSymbol } from './tools/find-symbol.js'
 import { findReferences } from './tools/find-references.js'
 import { getSmartContext } from './tools/get-smart-context.js'
@@ -17,7 +21,13 @@ import { searchByPattern } from './tools/search-by-pattern.js'
 import { getFileSummary } from './tools/get-file-summary.js'
 import { searchCode } from './tools/search-code.js'
 
-export function createServer(db: DB, projectRoot: string) {
+// Mutable state — allows set_project to swap project at runtime
+export interface ServerState {
+  db: DB
+  projectRoot: string
+}
+
+export function createServer(state: ServerState) {
   const server = new McpServer({
     name: 'context-bunker',
     version: '0.1.0',
@@ -25,16 +35,63 @@ export function createServer(db: DB, projectRoot: string) {
 
   const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] })
 
+  const requireProject = () => {
+    if (!state.projectRoot || !state.db) {
+      return 'No project set. Call set_project first with the path to your project.'
+    }
+    return null
+  }
+
+  // ── set_project ──
+  server.tool(
+    'set_project',
+    'Set the project directory to index and analyze. Call this first if no project was specified at startup. Re-indexes automatically.',
+    {
+      path: z.string().describe('Absolute path to the project root directory'),
+    },
+    async ({ path: projectPath }) => {
+      const absPath = resolve(projectPath)
+      if (!existsSync(absPath)) return text(`Directory not found: ${absPath}`)
+
+      // Close old DB if switching projects
+      if (state.db && state.projectRoot !== absPath) {
+        try { state.db.close() } catch { /* ignore */ }
+      }
+
+      // Open new DB
+      const dbPath = join(absPath, '.context-bunker', 'index.db')
+      state.db = await openDatabase(dbPath)
+      state.projectRoot = absPath
+
+      // Load config and index
+      await initParser()
+      const config = loadConfig(absPath)
+      const result = await indexProject(state.db, absPath, undefined, config)
+
+      // Start session
+      startSession(state.db)
+
+      return text([
+        `Project set: ${absPath}`,
+        `Indexed: ${result.indexed} files, ${result.skipped} unchanged, ${result.removed} removed (${result.timeMs}ms)`,
+        '',
+        'All tools are now ready. Try get_status or get_project_map.',
+      ].join('\n'))
+    }
+  )
+
   // ── get_status ──
   server.tool(
     'get_status',
-    'Get index health, stats, and session info',
+    'Get index health, stats, and current project info.',
     {},
     async () => {
-      const stats = getStats(db)
+      const err = requireProject()
+      if (err) return text(err)
+      const stats = getStats(state.db)
       return text([
         `context-bunker index status`,
-        `  Project: ${projectRoot}`,
+        `  Project: ${state.projectRoot}`,
         `  Indexed files: ${stats.files}`,
         `  Symbols: ${stats.symbols}`,
         `  Imports tracked: ${stats.imports}`,
@@ -47,15 +104,17 @@ export function createServer(db: DB, projectRoot: string) {
   // ── reindex ──
   server.tool(
     'reindex',
-    'Force re-index of the codebase or a single file',
+    'Force re-index of the codebase or a single file.',
     { file_path: z.string().optional().describe('Relative path to a specific file. Omit for full re-index.') },
     async ({ file_path }) => {
+      const err = requireProject()
+      if (err) return text(err)
       if (file_path) {
-        const fullPath = resolve(projectRoot, file_path)
-        const changed = await indexFile(db, fullPath, projectRoot)
+        const fullPath = resolve(state.projectRoot, file_path)
+        const changed = await indexFile(state.db, fullPath, state.projectRoot)
         return text(changed ? `Re-indexed: ${file_path}` : `No changes: ${file_path}`)
       }
-      const result = await indexProject(db, projectRoot)
+      const result = await indexProject(state.db, state.projectRoot)
       return text(`Full re-index: ${result.indexed} indexed, ${result.skipped} unchanged, ${result.removed} removed (${result.timeMs}ms)`)
     }
   )
@@ -69,7 +128,11 @@ export function createServer(db: DB, projectRoot: string) {
       kind: z.enum(['function', 'class', 'interface', 'type', 'enum', 'variable']).optional().describe('Filter by symbol kind'),
       scope: z.string().optional().describe('Filter by file path prefix (e.g. "src/routes/")'),
     },
-    async ({ query, kind, scope }) => text(findSymbol(db, query, kind, scope))
+    async ({ query, kind, scope }) => {
+      const err = requireProject()
+      if (err) return text(err)
+      return text(findSymbol(state.db, query, kind, scope))
+    }
   )
 
   // ── find_references ──
@@ -80,7 +143,11 @@ export function createServer(db: DB, projectRoot: string) {
       symbol: z.string().describe('Symbol name to find references for'),
       file: z.string().optional().describe('Limit to references of the symbol defined in this file'),
     },
-    async ({ symbol, file }) => text(findReferences(db, symbol, file))
+    async ({ symbol, file }) => {
+      const err = requireProject()
+      if (err) return text(err)
+      return text(findReferences(state.db, symbol, file))
+    }
   )
 
   // ── get_smart_context ──
@@ -90,7 +157,11 @@ export function createServer(db: DB, projectRoot: string) {
     {
       file_path: z.string().describe('Relative path to the file (e.g. "src/auth/middleware.ts")'),
     },
-    async ({ file_path }) => text(getSmartContext(db, file_path))
+    async ({ file_path }) => {
+      const err = requireProject()
+      if (err) return text(err)
+      return text(getSmartContext(state.db, file_path))
+    }
   )
 
   // ── get_dependency_graph ──
@@ -102,7 +173,11 @@ export function createServer(db: DB, projectRoot: string) {
       direction: z.enum(['dependencies', 'dependents']).default('dependents').describe('"dependents" = files that import this, "dependencies" = files this imports'),
       depth: z.number().min(1).max(10).default(3).describe('How many levels deep to traverse'),
     },
-    async ({ file_path, direction, depth }) => text(getDependencyGraph(db, file_path, direction, depth))
+    async ({ file_path, direction, depth }) => {
+      const err = requireProject()
+      if (err) return text(err)
+      return text(getDependencyGraph(state.db, file_path, direction, depth))
+    }
   )
 
   // ── get_call_graph ──
@@ -114,7 +189,11 @@ export function createServer(db: DB, projectRoot: string) {
       file: z.string().optional().describe('File where the function is defined (disambiguates if multiple matches)'),
       depth: z.number().min(1).max(5).default(2).describe('How many levels deep to trace'),
     },
-    async ({ function_name, file, depth }) => text(getCallGraph(db, function_name, file, depth))
+    async ({ function_name, file, depth }) => {
+      const err = requireProject()
+      if (err) return text(err)
+      return text(getCallGraph(state.db, function_name, file, depth))
+    }
   )
 
   // ── get_symbol_source ──
@@ -125,7 +204,11 @@ export function createServer(db: DB, projectRoot: string) {
       symbol: z.string().describe('Symbol name to extract'),
       file: z.string().optional().describe('File where the symbol is defined (disambiguates if multiple matches)'),
     },
-    async ({ symbol, file }) => text(getSymbolSource(db, projectRoot, symbol, file))
+    async ({ symbol, file }) => {
+      const err = requireProject()
+      if (err) return text(err)
+      return text(getSymbolSource(state.db, state.projectRoot, symbol, file))
+    }
   )
 
   // ── get_project_map ──
@@ -135,15 +218,23 @@ export function createServer(db: DB, projectRoot: string) {
     {
       depth: z.number().min(1).max(5).default(3).describe('How many directory levels deep to show'),
     },
-    async ({ depth }) => text(getProjectMap(db, depth))
+    async ({ depth }) => {
+      const err = requireProject()
+      if (err) return text(err)
+      return text(getProjectMap(state.db, depth))
+    }
   )
 
   // ── get_changes_since_last_session ──
   server.tool(
     'get_changes_since_last_session',
-    'What changed in the codebase since the AI last interacted with it. Shows added, modified, and deleted files with their symbols. Impossible without persistent index.',
+    'What changed in the codebase since the AI last interacted with it. Shows added, modified, and deleted files with their symbols.',
     {},
-    async () => text(getChangesSinceLastSession(db, projectRoot))
+    async () => {
+      const err = requireProject()
+      if (err) return text(err)
+      return text(getChangesSinceLastSession(state.db, state.projectRoot))
+    }
   )
 
   // ── find_unused_exports ──
@@ -153,7 +244,11 @@ export function createServer(db: DB, projectRoot: string) {
     {
       scope: z.string().optional().describe('Limit to exports in files matching this path prefix (e.g. "src/utils/")'),
     },
-    async ({ scope }) => text(findUnusedExports(db, scope))
+    async ({ scope }) => {
+      const err = requireProject()
+      if (err) return text(err)
+      return text(findUnusedExports(state.db, scope))
+    }
   )
 
   // ── search_by_pattern ──
@@ -164,7 +259,11 @@ export function createServer(db: DB, projectRoot: string) {
       pattern: z.enum(['http_calls', 'env_access', 'error_handlers', 'async_functions', 'todos', 'test_files'])
         .describe('Pattern to search for'),
     },
-    async ({ pattern }) => text(searchByPattern(db, pattern))
+    async ({ pattern }) => {
+      const err = requireProject()
+      if (err) return text(err)
+      return text(searchByPattern(state.db, pattern))
+    }
   )
 
   // ── get_file_summary ──
@@ -174,7 +273,11 @@ export function createServer(db: DB, projectRoot: string) {
     {
       file_path: z.string().describe('Relative path to the file'),
     },
-    async ({ file_path }) => text(getFileSummary(db, file_path))
+    async ({ file_path }) => {
+      const err = requireProject()
+      if (err) return text(err)
+      return text(getFileSummary(state.db, file_path))
+    }
   )
 
   // ── search_code ──
@@ -185,7 +288,11 @@ export function createServer(db: DB, projectRoot: string) {
       query: z.string().describe('Search query (e.g. "authentication middleware", "database connection")'),
       limit: z.number().min(1).max(50).default(10).describe('Max results to return'),
     },
-    async ({ query, limit }) => text(searchCode(db, query, limit))
+    async ({ query, limit }) => {
+      const err = requireProject()
+      if (err) return text(err)
+      return text(searchCode(state.db, query, limit))
+    }
   )
 
   return server

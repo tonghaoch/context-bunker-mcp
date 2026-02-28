@@ -5,7 +5,7 @@ import { openDatabase } from './store/db.js'
 import { initParser } from './indexer/parser.js'
 import { indexProject, indexFile, removeFile } from './indexer/indexer.js'
 import { startWatcher } from './indexer/watcher.js'
-import { createServer } from './server.js'
+import { createServer, type ServerState } from './server.js'
 import { startSession, endSession, getStats } from './store/queries.js'
 import { buildFileSnapshot } from './tools/get-changes.js'
 import { loadConfig, initConfig } from './config.js'
@@ -17,7 +17,7 @@ const noWatch = args.includes('--no-watch')
 const showHelp = args.includes('--help') || args.includes('-h')
 const doInit = args.includes('--init')
 const showStatus = args.includes('--status')
-const projectRoot = resolve(args.find(a => !a.startsWith('-')) ?? '.')
+const projectArg = args.find(a => !a.startsWith('-'))
 
 function log(...msg: unknown[]) {
   if (verbose) console.error('[context-bunker]', ...msg)
@@ -37,10 +37,13 @@ Options:
   --verbose, -v    Verbose logging to stderr
   --no-watch       Disable file watcher
 
+If no project-root is given, the server starts without a project.
+The AI can then call set_project(path) to dynamically select a project.
+
 Examples:
-  bun src/index.ts                     # Index current directory, start MCP server
-  bun src/index.ts /path/to/project    # Index specific project
-  bun src/index.ts --init              # Create config file
+  bun src/index.ts                     # Start server, AI calls set_project later
+  bun src/index.ts /path/to/project    # Index specific project at startup
+  bun src/index.ts --init              # Create config file in current directory
   bun src/index.ts --status            # Show index stats
 
 MCP setup (Claude Code):
@@ -51,18 +54,20 @@ MCP setup (Claude Code):
 
 // ── Init ──
 if (doInit) {
-  console.log(initConfig(projectRoot))
+  const root = resolve(projectArg ?? '.')
+  console.log(initConfig(root))
   process.exit(0)
 }
 
 // ── Status ──
 if (showStatus) {
-  const dbPath = join(projectRoot, '.context-bunker', 'index.db')
+  const root = resolve(projectArg ?? '.')
+  const dbPath = join(root, '.context-bunker', 'index.db')
   try {
     const db = await openDatabase(dbPath)
     const stats = getStats(db)
     console.log(`context-bunker index status`)
-    console.log(`  Project: ${projectRoot}`)
+    console.log(`  Project: ${root}`)
     console.log(`  Indexed files: ${stats.files}`)
     console.log(`  Symbols: ${stats.symbols}`)
     console.log(`  Imports tracked: ${stats.imports}`)
@@ -78,68 +83,66 @@ if (showStatus) {
 // ── Main: MCP Server ──
 async function main() {
   log('Starting context-bunker MCP server...')
-  log('Project root:', projectRoot)
 
-  // Load config
-  const config = loadConfig(projectRoot)
-  log('Config loaded:', JSON.stringify(config))
-
-  // Init SQLite
-  const dbPath = join(projectRoot, '.context-bunker', 'index.db')
-  log('Database:', dbPath)
-  const db = await openDatabase(dbPath)
-  log('Database opened')
-
-  // Init tree-sitter
   await initParser()
   log('Tree-sitter initialized')
 
-  // Initial index
-  log('Indexing project...')
-  const result = await indexProject(db, projectRoot, log, config)
-  log(`Index complete: ${result.indexed} indexed, ${result.skipped} unchanged, ${result.removed} removed (${result.timeMs}ms)`)
+  // Server state — mutable, allows set_project to swap project
+  const state: ServerState = {} as ServerState
 
-  // Start file watcher
+  // If project path given, index it upfront
+  let sessionId: number | undefined
   let watcher: { close: () => Promise<void> } | undefined
-  if (!noWatch) {
-    watcher = startWatcher(projectRoot, {
-      onAdd: async (path) => {
-        log('File added:', path)
-        await indexFile(db, path, projectRoot, config)
-      },
-      onChange: async (path) => {
-        log('File changed:', path)
-        await indexFile(db, path, projectRoot, config)
-      },
-      onUnlink: async (path) => {
-        log('File removed:', path)
-        await removeFile(db, path, projectRoot)
-      },
-    })
-    log('File watcher started')
+
+  if (projectArg) {
+    const projectRoot = resolve(projectArg)
+    log('Project root:', projectRoot)
+
+    const config = loadConfig(projectRoot)
+    const dbPath = join(projectRoot, '.context-bunker', 'index.db')
+    state.db = await openDatabase(dbPath)
+    state.projectRoot = projectRoot
+
+    log('Indexing project...')
+    const result = await indexProject(state.db, projectRoot, log, config)
+    log(`Index complete: ${result.indexed} indexed, ${result.skipped} unchanged, ${result.removed} removed (${result.timeMs}ms)`)
+
+    // File watcher
+    if (!noWatch) {
+      watcher = startWatcher(projectRoot, {
+        onAdd: async (path) => { log('File added:', path); await indexFile(state.db, path, projectRoot, config) },
+        onChange: async (path) => { log('File changed:', path); await indexFile(state.db, path, projectRoot, config) },
+        onUnlink: async (path) => { log('File removed:', path); await removeFile(state.db, path, projectRoot) },
+      })
+      log('File watcher started')
+    }
+
+    // Session tracking
+    const sr = startSession(state.db)
+    sessionId = Number(sr.lastInsertRowid)
+    log('Session started:', sessionId)
+  } else {
+    log('No project specified. AI can call set_project(path) to select a project.')
   }
 
-  // Start session tracking
-  const sessionResult = startSession(db)
-  const sessionId = Number(sessionResult.lastInsertRowid)
-  log('Session started:', sessionId)
-
   // Create MCP server
-  const server = createServer(db, projectRoot)
+  const server = createServer(state)
 
   // Connect via stdio
   const transport = new StdioServerTransport()
   await server.connect(transport)
   log('MCP server running on stdio')
 
-  // Graceful shutdown — save session snapshot
+  // Graceful shutdown
   const shutdown = async () => {
-    log('Saving session snapshot...')
-    const snapshot = buildFileSnapshot(db)
-    endSession(db, sessionId, snapshot)
-    log('Session saved')
+    log('Shutting down...')
+    if (state.db && sessionId != null) {
+      const snapshot = buildFileSnapshot(state.db)
+      endSession(state.db, sessionId, snapshot)
+      log('Session saved')
+    }
     if (watcher) await watcher.close()
-    db.close()
+    if (state.db) state.db.close()
     process.exit(0)
   }
   process.on('SIGINT', shutdown)

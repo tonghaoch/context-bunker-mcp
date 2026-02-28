@@ -32,7 +32,7 @@ Great question. Grep is excellent for text search — but **structural intellige
 
 context-bunker is **not** a grep replacement. It's for things grep structurally can't do well: cross-session memory, transitive dependency graphs, smart context assembly, and dead code detection. See [full CLI comparison](./docs/cli-comparison.md).
 
-## Tools (14)
+## Tools (15)
 
 ### 🔥 Unique Tools (no competitor has these)
 
@@ -59,6 +59,7 @@ context-bunker is **not** a grep replacement. It's for things grep structurally 
 
 | Tool | What it does |
 |------|-------------|
+| `set_project` | Dynamically set the project to index. AI calls this if no project was specified at startup. |
 | `search_code` | Semantic code search using local TF-IDF. No API keys. Finds files relevant to natural language queries. |
 | `reindex` | Force re-index of the codebase or a single file. |
 | `get_status` | Index health, file counts, and session token savings estimate. |
@@ -88,10 +89,12 @@ Tree-sitter grammars for all languages are already vendored — adding a new lan
 
 ### As an MCP server (recommended)
 
-Add to your AI tool's MCP config:
-
 **Claude Code:**
 ```bash
+# Option A: specify project at startup (auto-indexes)
+claude mcp add context-bunker -- bun /path/to/context-bunker/src/index.ts /your/project
+
+# Option B: no project — AI calls set_project(path) dynamically
 claude mcp add context-bunker -- bun /path/to/context-bunker/src/index.ts
 ```
 
@@ -101,25 +104,19 @@ claude mcp add context-bunker -- bun /path/to/context-bunker/src/index.ts
   "mcpServers": {
     "context-bunker": {
       "command": "bun",
-      "args": ["/path/to/context-bunker/src/index.ts"],
-      "cwd": "/your/project/root"
+      "args": ["/path/to/context-bunker/src/index.ts", "/your/project"]
     }
   }
 }
 ```
 
-### Standalone
+If no project path is given, the AI can call `set_project` to dynamically select any project directory.
+
+### Install
 ```bash
-# Clone + install
 git clone https://github.com/tonghaoch/context-bunker-mcp.git
 cd context-bunker-mcp
 bun install
-
-# Run (indexes current directory)
-bun run src/index.ts
-
-# Run with verbose logging
-bun run src/index.ts --verbose
 ```
 
 ## Development Status
