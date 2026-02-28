@@ -1,0 +1,35 @@
+{
+  "name": "context-bunker",
+  "version": "0.1.0",
+  "description": "Pre-computed codebase intelligence MCP server. Zero API keys. Code never leaves your machine.",
+  "type": "module",
+  "bin": {
+    "context-bunker": "./dist/index.js"
+  },
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "build": "bun build src/index.ts --outdir dist --target node --format esm",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "chokidar": "^4.0.3",
+    "tree-sitter-wasms": "^0.1.13",
+    "web-tree-sitter": "^0.24.7",
+    "zod": "^3.25.3"
+  },
+  "optionalDependencies": {
+    "better-sqlite3": "^11.8.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "typescript": "^5.7.3"
+  },
+  "files": [
+    "dist/",
+    "grammars/"
+  ],
+  "keywords": ["mcp", "codebase", "indexer", "tree-sitter", "ai", "context", "code-intelligence"],
+  "license": "MIT"
+}
