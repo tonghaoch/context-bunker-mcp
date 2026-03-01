@@ -3,12 +3,12 @@ import type { DB } from '../store/db.js'
 type PatternType = 'http_calls' | 'env_access' | 'error_handlers' | 'async_functions' | 'todos' | 'test_files'
 
 const PATTERN_DESCRIPTIONS: Record<PatternType, string> = {
-  http_calls: 'Functions that make HTTP calls (fetch, axios, http, requests, httpx, aiohttp)',
-  env_access: 'Code accessing environment variables (process.env, os.environ, os.Getenv)',
+  http_calls: 'Functions that make HTTP calls (fetch, axios, http, requests, httpx, aiohttp, reqwest)',
+  env_access: 'Code accessing environment variables (process.env, os.environ, os.Getenv, env::var)',
   error_handlers: 'Functions containing error handling (try/catch, except, recover)',
-  async_functions: 'All async function definitions (TS/JS/Python)',
+  async_functions: 'All async function definitions (TS/JS/Python/Rust)',
   todos: 'Functions containing TODO or FIXME comments',
-  test_files: 'Test files (*.test.*, *.spec.*, *_test.go, test_*.py)',
+  test_files: 'Test files (*.test.*, *.spec.*, *_test.go, test_*.py, tests/*.rs)',
 }
 
 export function searchByPattern(db: DB, pattern: string): string {
@@ -40,6 +40,10 @@ export function searchByPattern(db: DB, pattern: string): string {
            OR c.callee_name LIKE 'http.Post%'
            OR c.callee_name LIKE 'http.Do%'
            OR c.callee_name LIKE 'http.NewRequest%'
+           OR c.callee_name LIKE 'reqwest::%'
+           OR c.callee_name LIKE 'reqwest.%'
+           OR c.callee_name LIKE 'hyper::%'
+           OR c.callee_name LIKE 'ureq::%'
         ORDER BY f.path
       `).all() as { callee_name: string; caller: string; path: string; line: number }[]
       if (rows.length === 0) return 'No HTTP calls found.'
@@ -59,6 +63,8 @@ export function searchByPattern(db: DB, pattern: string): string {
            OR c.callee_name LIKE 'os.getenv%'
            OR c.callee_name LIKE 'os.Getenv%'
            OR c.callee_name LIKE 'os.LookupEnv%'
+           OR c.callee_name LIKE 'env::var%'
+           OR c.callee_name LIKE 'std::env::var%'
         ORDER BY f.path
       `).all() as { callee_name: string; caller: string; path: string; line: number }[]
       if (rows.length === 0) return 'No environment variable access found.'
@@ -144,6 +150,8 @@ export function searchByPattern(db: DB, pattern: string): string {
            OR path LIKE '%!_test.py' ESCAPE '!'
            OR path LIKE '%/test!_%' ESCAPE '!'
            OR path LIKE 'test!_%' ESCAPE '!'
+           OR path LIKE '%!_test.rs' ESCAPE '!'
+           OR path LIKE '%/tests/%.rs'
         ORDER BY path
       `).all() as { path: string; lines: number }[]
       if (rows.length === 0) return 'No test files found.'

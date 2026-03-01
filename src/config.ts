@@ -10,7 +10,7 @@ export interface Config {
 
 const CONFIG_FILE = '.context-bunker.json'
 
-export const SUPPORTED_LANGUAGES = new Set(['typescript', 'tsx', 'javascript', 'python', 'go'])
+export const SUPPORTED_LANGUAGES = new Set(['typescript', 'tsx', 'javascript', 'python', 'go', 'rust'])
 
 const DEFAULT_CONFIG: Config = {
   include: ['src/', 'lib/', 'app/', 'packages/'],
@@ -22,8 +22,10 @@ const DEFAULT_CONFIG: Config = {
     '**/test_*.py',  // Python prefix convention
     '**/*_test.py',  // Python suffix convention
     '**/*_test.go',  // Go convention
+    '**/*_test.rs',  // Rust convention
+    '**/tests/**/*.rs',  // Rust integration tests
   ],
-  languages: ['typescript', 'tsx', 'javascript', 'python', 'go'],
+  languages: ['typescript', 'tsx', 'javascript', 'python', 'go', 'rust'],
   maxFileSize: 1_048_576, // 1MB
 }
 

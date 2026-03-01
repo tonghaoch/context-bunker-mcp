@@ -204,7 +204,7 @@ web-tree-sitter runs in any Node/Bun environment without compilation. The WASM o
 | JavaScript/JSX | `tree-sitter-javascript` | ✅ `languages/javascript.ts` | P0 |
 | Python | `tree-sitter-python` | ✅ `languages/python.ts` | P1 |
 | Go | `tree-sitter-go` | ✅ `languages/go.ts` | P1 |
-| Rust | `tree-sitter-rust` | 🔲 Grammar only | P2 |
+| Rust | `tree-sitter-rust` | ✅ `languages/rust.ts` | P2 |
 | Java | `tree-sitter-java` | 🔲 Grammar only | P2 |
 | C/C++ | `tree-sitter-c`, `tree-sitter-cpp` | 🔲 Not yet | P2 |
 
@@ -273,6 +273,13 @@ Uses `tsconfig.json` `paths` and `baseUrl` if present.
 "example.com/myapp/auth"      → auth/ (local, resolved via go.mod module name)
 ```
 
+**Rust:**
+```rust
+"crate::utils::hash_password" → src/utils.rs (local, crate:: maps to src/)
+"super::models"               → parent module (relative)
+"std::collections::HashMap"   → (external)
+```
+
 ## 7. Performance Budget
 
 | Operation | Target | Notes |
@@ -328,7 +335,8 @@ context-bunker-mcp/
 │   │   ├── typescript.ts         # TS/TSX extraction (P0)
 │   │   ├── javascript.ts         # JS/JSX — re-exports TS extractor (P0)
 │   │   ├── python.ts             # Python extraction (P1)
-│   │   └── go.ts                 # Go extraction (P1)
+│   │   ├── go.ts                 # Go extraction (P1)
+│   │   └── rust.ts               # Rust extraction (P2)
 │   │
 │   └── utils/
 │       └── paths.ts              # Path normalization
@@ -338,10 +346,12 @@ context-bunker-mcp/
 │   ├── tools.test.ts             # Tool function tests
 │   ├── python.test.ts            # Python extractor tests
 │   ├── go.test.ts                # Go extractor tests
+│   ├── rust.test.ts              # Rust extractor tests
 │   └── fixtures/
 │       ├── small-ts/             # 5-file TS project
 │       ├── small-py/             # 4-file Python project
-│       └── small-go/             # 3-file Go project
+│       ├── small-go/             # 3-file Go project
+│       └── small-rust/           # 4-file Rust project
 │
 └── docs/
     ├── market-analysis.md

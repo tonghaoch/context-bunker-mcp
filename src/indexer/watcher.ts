@@ -33,6 +33,8 @@ const IGNORED = [
   '**/*.egg-info/**',
   // Go
   '**/vendor/**',
+  // Rust
+  '**/target/**',
   // General dot-directories (IDE, caches, etc.)
   '**/.turbo/**',
   '**/.parcel-cache/**',

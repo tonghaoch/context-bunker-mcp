@@ -22,6 +22,8 @@ const IGNORED_DIRS = new Set([
   '.ruff_cache', '.tox',
   // Go
   'vendor',
+  // Rust
+  'target',
 ])
 
 const IGNORED_SUFFIXES = ['.d.ts', '.d.mts', '.d.cts']

@@ -139,6 +139,42 @@ function resolveGoImport(
   return { resolved: fromPath, isExternal: true }
 }
 
+function resolveRustImport(
+  fromPath: string,
+  importingFile: string,
+  projectRoot: string,
+): { resolved: string; isExternal: boolean } {
+  // crate:: → local, resolve to src/ path
+  if (fromPath.startsWith('crate::')) {
+    const rest = fromPath.slice('crate::'.length).replace(/::/g, '/')
+    // Try src/{rest}.rs or src/{rest}/mod.rs
+    const base = join(projectRoot, 'src', rest)
+    if (existsSync(base + '.rs')) return { resolved: relative(projectRoot, base + '.rs'), isExternal: false }
+    const modPath = join(base, 'mod.rs')
+    if (existsSync(modPath)) return { resolved: relative(projectRoot, modPath), isExternal: false }
+    return { resolved: 'src/' + rest.replace(/\//g, '/') + '.rs', isExternal: false }
+  }
+  // super:: → relative parent module
+  if (fromPath.startsWith('super::')) {
+    const rest = fromPath.slice('super::'.length).replace(/::/g, '/')
+    const dir = dirname(importingFile)
+    const parent = dirname(dir)
+    const base = join(parent, rest)
+    if (existsSync(base + '.rs')) return { resolved: relative(projectRoot, base + '.rs'), isExternal: false }
+    return { resolved: relative(projectRoot, base) + '.rs', isExternal: false }
+  }
+  // self:: → current module
+  if (fromPath.startsWith('self::')) {
+    const rest = fromPath.slice('self::'.length).replace(/::/g, '/')
+    const dir = dirname(importingFile)
+    const base = join(dir, rest)
+    if (existsSync(base + '.rs')) return { resolved: relative(projectRoot, base + '.rs'), isExternal: false }
+    return { resolved: relative(projectRoot, base) + '.rs', isExternal: false }
+  }
+  // External crate
+  return { resolved: fromPath, isExternal: true }
+}
+
 export function resolveImportPath(
   fromPath: string,
   importingFile: string,
@@ -147,6 +183,7 @@ export function resolveImportPath(
 ): { resolved: string; isExternal: boolean } {
   if (language === 'python') return resolvePythonImport(fromPath, importingFile, projectRoot)
   if (language === 'go') return resolveGoImport(fromPath, projectRoot)
+  if (language === 'rust') return resolveRustImport(fromPath, importingFile, projectRoot)
   // External module (no relative path prefix, no alias match)
   if (!fromPath.startsWith('.') && !fromPath.startsWith('/')) {
     // Check tsconfig paths first

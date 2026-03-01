@@ -39,9 +39,9 @@ export function getSmartContext(db: DB, filePath: string) {
   })
 
   // Find test file
-  const name = basename(filePath).replace(/\.(ts|tsx|js|jsx|mjs|cjs|mts|cts|py|go)$/, '')
+  const name = basename(filePath).replace(/\.(ts|tsx|js|jsx|mjs|cjs|mts|cts|py|go|rs)$/, '')
   const dir = dirname(filePath)
-  const ext = filePath.match(/\.(ts|tsx|js|jsx|mjs|cjs|mts|cts|py|go)$/)?.[0] ?? ''
+  const ext = filePath.match(/\.(ts|tsx|js|jsx|mjs|cjs|mts|cts|py|go|rs)$/)?.[0] ?? ''
 
   // Build test patterns based on file extension
   const testPatterns: { pattern: string; extensions: string[] }[] = []
@@ -58,6 +58,12 @@ export function getSmartContext(db: DB, filePath: string) {
     // Go convention: foo_test.go
     testPatterns.push(
       { pattern: `${name}_test`, extensions: ['.go'] },
+    )
+  } else if (ext === '.rs') {
+    // Rust conventions: tests/foo.rs, foo_test.rs
+    testPatterns.push(
+      { pattern: `tests/${name}`, extensions: ['.rs'] },
+      { pattern: `${name}_test`, extensions: ['.rs'] },
     )
   } else {
     // TypeScript/JavaScript conventions
