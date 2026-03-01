@@ -10,7 +10,7 @@ export interface DB {
   transaction<T>(fn: () => T): () => T
 }
 
-export interface Statement {
+interface Statement {
   run(...params: unknown[]): { changes: number; lastInsertRowid: number | bigint }
   get(...params: unknown[]): unknown
   all(...params: unknown[]): unknown[]

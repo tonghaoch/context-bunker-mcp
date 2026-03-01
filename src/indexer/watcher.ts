@@ -1,7 +1,7 @@
 import { watch } from 'chokidar'
 import { isSupportedFile } from './parser.js'
 
-export interface WatcherCallbacks {
+interface WatcherCallbacks {
   onAdd(filePath: string): void | Promise<void>
   onChange(filePath: string): void | Promise<void>
   onUnlink(filePath: string): void | Promise<void>

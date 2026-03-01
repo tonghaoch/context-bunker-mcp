@@ -2,7 +2,7 @@ import type { DB } from './db.js'
 
 // ── Types ──
 
-export interface FileRow {
+interface FileRow {
   id: number
   path: string
   hash: string
@@ -11,7 +11,7 @@ export interface FileRow {
   indexed_at: number
 }
 
-export interface SymbolRow {
+interface SymbolRow {
   id: number
   file_id: number
   name: string
@@ -23,7 +23,7 @@ export interface SymbolRow {
   jsdoc: string | null
 }
 
-export interface ImportRow {
+interface ImportRow {
   id: number
   file_id: number
   symbol: string
@@ -32,7 +32,7 @@ export interface ImportRow {
   is_external: number
 }
 
-export interface ExportRow {
+interface ExportRow {
   id: number
   file_id: number
   symbol: string
@@ -41,7 +41,7 @@ export interface ExportRow {
   original_path: string | null
 }
 
-export interface CallRow {
+interface CallRow {
   id: number
   caller_symbol_id: number
   callee_name: string
@@ -49,7 +49,7 @@ export interface CallRow {
   line: number
 }
 
-export interface SessionRow {
+interface SessionRow {
   id: number
   started_at: number
   ended_at: number | null
@@ -136,10 +136,6 @@ export function deleteImportsByFile(db: DB, fileId: number) {
 // Exports
 export function getExportsByFile(db: DB, fileId: number) {
   return db.prepare('SELECT * FROM exports WHERE file_id = ?').all(fileId) as ExportRow[]
-}
-
-export function getAllExports(db: DB) {
-  return db.prepare('SELECT e.*, f.path as file_path FROM exports e JOIN files f ON e.file_id = f.id').all() as (ExportRow & { file_path: string })[]
 }
 
 export function insertExport(db: DB, fileId: number, symbol: string, kind: string, isReexport: boolean, originalPath?: string) {

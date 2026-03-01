@@ -67,7 +67,7 @@ function walkDir(dir: string): string[] {
   return files
 }
 
-export interface IndexResult {
+interface IndexResult {
   indexed: number
   skipped: number
   removed: number
