@@ -1,105 +1,43 @@
-# context-bunker 🏗️
+# Context Bunker MCP 🏗️
 
-> Pre-computed codebase intelligence for AI coding tools. One command. Code never leaves your machine.
+> **Stop wasting tokens on orientation.** Pre-computed codebase intelligence for AI coding tools. One command. Code never leaves your machine.
 
 ## What is this?
 
-An MCP (Model Context Protocol) server that indexes your codebase using **tree-sitter AST parsing** and exposes structural intelligence to AI coding tools — Claude Code, Cursor, Windsurf, Copilot, and any MCP-compatible client.
+AI coding agents spend [~80% of tokens just figuring out where things are](https://earezki.com/ai-news/2026-02-26-how-i-cut-my-ai-coding-agents-token-usage-by-65-without-changing-models/) — re-reading files, tracing imports, grepping for symbols. Every. Single. Session.
 
-**The problem:** AI coding agents spend [~80% of tokens on "orientation"](https://earezki.com/ai-news/2026-02-26-how-i-cut-my-ai-coding-agents-token-usage-by-65-without-changing-models/) — re-discovering project structure, reading files to find the right function, manually tracing import chains. Every session starts from scratch.
+Context Bunker fixes this. It's an [MCP](https://modelcontextprotocol.io/) server that indexes your codebase using **tree-sitter AST parsing** and gives your AI tools instant access to structural intelligence — dependency graphs, call trees, dead code, cross-session diffs — all from a local SQLite database.
 
-**The solution:** context-bunker pre-computes a structural index (symbols, imports, exports, call graphs, dependency trees) and persists it in SQLite. AI tools query the index instead of doing dozens of grep/read calls.
+**One call replaces 8-16 grep/read calls. ~90% token savings. Zero cloud. Zero API keys.**
 
-```
-# Bun (recommended — zero native deps, fastest)
-bunx context-bunker
+Works with Claude Code, Cursor, Windsurf, Copilot, and any MCP-compatible client.
 
-# Node.js (requires optional better-sqlite3)
-npx context-bunker
-```
-
-## Why Not Just Use Grep?
-
-Great question. Grep is excellent for text search — but **structural intelligence** is a different game:
-
-| Task | CLI (Grep/Read) | context-bunker | Savings |
-|------|----------------|----------------|---------|
-| Understand a file + all its deps | 8-16 tool calls, ~4K tokens | 1 call, ~400 tokens | **90%** |
-| "What breaks if I change this?" | Recursive grep (infeasible at depth 3) | 1 call, pre-computed graph | **~90%** |
-| "What changed since yesterday?" | **Impossible** (no session memory) | 1 call | **∞** |
-| Find dead code | Check every export vs all imports | 1 call, set difference | **∞** |
-| Scan 10 files to find the right one | 10 full file reads, ~5K tokens | 10 summaries, ~500 tokens | **90%** |
-
-context-bunker is **not** a grep replacement. It's for things grep structurally can't do well: cross-session memory, transitive dependency graphs, smart context assembly, and dead code detection. See [full CLI comparison](./docs/cli-comparison.md).
-
-## Tools (15)
-
-### 🔥 Unique Tools (no competitor has these)
-
-| Tool | What it does |
-|------|-------------|
-| `get_changes_since_last_session` | What changed in the codebase since the AI last saw it. Eliminates re-orientation cost. |
-| `find_unused_exports` | Dead code detection — symbols exported but never imported anywhere. |
-| `get_file_summary` | Token-efficient file overview (~50 tokens vs ~500 for full read). Scan 10 files for the cost of 1. |
-| `search_by_pattern` | Find code by structural pattern: HTTP calls, env access, error handlers, async functions, TODOs. |
-
-### 🧠 Core Intelligence Tools
-
-| Tool | What it does |
-|------|-------------|
-| `get_smart_context` | Full context for a file in 1 call: imports, exports, dependents, types, test file. Replaces 8-16 CLI calls. |
-| `get_dependency_graph` | Transitive import graph — "if I change this, what breaks?" with direction + depth control. |
-| `find_symbol` | AST-aware symbol search by name, kind (function/class/interface), and scope. Not text matching. |
-| `find_references` | Where a symbol is used across the codebase, classified by kind (import, call, type annotation). |
-| `get_call_graph` | What a function calls, recursively, rendered as a tree. |
-| `get_symbol_source` | Extract one function/class definition — not the whole file. 80% token savings per lookup. |
-| `get_project_map` | Architecture overview: modules, their public APIs, and relationships. |
-
-### 🔧 Housekeeping
-
-| Tool | What it does |
-|------|-------------|
-| `set_project` | Dynamically set the project to index. AI calls this if no project was specified at startup. |
-| `search_code` | Semantic code search using local TF-IDF. No API keys. Finds files relevant to natural language queries. |
-| `reindex` | Force re-index of the codebase or a single file. |
-| `get_status` | Index health, file counts, and session token savings estimate. |
-
-## Tech Stack
-
-| Layer | Choice | Why |
-|-------|--------|-----|
-| **Runtime** | **Bun** (Node.js fallback) | `bun:sqlite` built-in = zero native deps, 3x faster reads, 4-10x faster startup |
-| **MCP** | `@modelcontextprotocol/sdk` | Official TypeScript SDK |
-| **AST** | `web-tree-sitter` (WASM) | No native bindings, 30+ languages, works everywhere |
-| **Storage** | `bun:sqlite` / `better-sqlite3` | Single file, WAL mode, survives restarts |
-| **Search** | TF-IDF (local) | Zero API keys, no cloud, fast |
-| **Watch** | `chokidar` | Incremental re-index on file changes |
-
-## Language Support
-
-| Priority | Languages | Status |
-|----------|-----------|--------|
-| **P0** | TypeScript, JavaScript (TSX/JSX/MTS/CTS) | ✅ Complete |
-| **P1** | Python, Go | ✅ Complete |
-| **P2** | Rust, Java, C# | ✅ Complete |
-| **P2** | C/C++ | 🔲 Planned |
-
-Tree-sitter WASM grammars are loaded from `tree-sitter-wasms` (npm dependency). Adding a new language requires writing an extractor in `src/languages/`.
+> **Why not just grep?** Grep finds text. Context Bunker understands **structure** — dependency graphs, cross-session memory, dead code detection, and token-efficient summaries. Things grep structurally can't do. [Full comparison](./docs/cli-comparison.md).
 
 ## Setup
 
-### As an MCP server (recommended)
+Available via Bun (`bunx context-bunker`) or Node.js (`npx context-bunker`).
+
+### Install
+
+```bash
+git clone https://github.com/tonghaoch/context-bunker-mcp.git
+cd context-bunker-mcp
+bun install
+```
+
+### Add to your AI tool
 
 **Claude Code:**
 ```bash
-# Option A: specify project at startup (auto-indexes)
+# With a project (auto-indexes on startup)
 claude mcp add context-bunker -- bun /path/to/context-bunker/src/index.ts /your/project
 
-# Option B: no project — AI calls set_project(path) dynamically
+# Without a project (AI calls set_project dynamically)
 claude mcp add context-bunker -- bun /path/to/context-bunker/src/index.ts
 ```
 
-**Cursor / Windsurf / VS Code (settings.json):**
+**Cursor / Windsurf / VS Code** — add to `settings.json`:
 ```json
 {
   "mcpServers": {
@@ -111,61 +49,56 @@ claude mcp add context-bunker -- bun /path/to/context-bunker/src/index.ts
 }
 ```
 
-If no project path is given, the AI can call `set_project` to dynamically select any project directory.
+## Tools (15)
 
-### Install
-```bash
-git clone https://github.com/tonghaoch/context-bunker-mcp.git
-cd context-bunker-mcp
-bun install
-```
+| Tool | What it does |
+|------|-------------|
+| 🔥 `get_changes_since_last_session` | What changed since the AI last looked. No more re-orientation. |
+| 🔥 `find_unused_exports` | Dead code detection — exported but never imported anywhere. |
+| 🔥 `get_file_summary` | File overview in ~50 tokens. Scan 10 files for the cost of 1. |
+| 🔥 `search_by_pattern` | Find structural patterns: HTTP calls, env access, error handlers, async, TODOs. |
+| 🧠 `get_smart_context` | Full file context in 1 call — imports, exports, dependents, types, tests. |
+| 🧠 `get_dependency_graph` | "If I change this, what breaks?" — transitive import graph with depth control. |
+| 🧠 `find_symbol` | AST-aware symbol search by name, kind, and scope. Not text matching. |
+| 🧠 `find_references` | Where a symbol is used, classified by kind (import, call, type annotation). |
+| 🧠 `get_call_graph` | What a function calls, recursively, as a tree. |
+| 🧠 `get_symbol_source` | Extract one definition — not the whole file. 80% token savings. |
+| 🧠 `get_project_map` | Architecture overview: modules, public APIs, relationships. |
+| 🔧 `set_project` | Point the index at any project directory on the fly. |
+| 🔧 `search_code` | Semantic search via local TF-IDF. No API keys needed. |
+| 🔧 `reindex` | Force re-index of the codebase or a single file. |
+| 🔧 `get_status` | Index health, file counts, token savings estimate. |
+
+🔥 Unique &nbsp; 🧠 Core Intelligence &nbsp; 🔧 Housekeeping
+
+## Language Support
+
+TypeScript, JavaScript (TSX/JSX/MTS/CTS), Python, Go, Rust, Java, C#
+
+Powered by tree-sitter WASM grammars. Adding a new language = one extractor file in `src/languages/`.
+
+## Tech Stack
+
+| | |
+|---|---|
+| **Runtime** | Bun (Node.js fallback) — `bun:sqlite` = zero native deps, 4-10x faster startup |
+| **MCP** | `@modelcontextprotocol/sdk` |
+| **AST** | `web-tree-sitter` (WASM) — no native bindings, works everywhere |
+| **Storage** | SQLite (WAL mode) — single file, survives restarts |
+| **Search** | TF-IDF (local) — zero API keys, no cloud |
+| **Watch** | `chokidar` — incremental re-index on file changes |
 
 ## Storage
 
-By default, the SQLite index is stored in your OS cache directory — **not** inside the project. This avoids polluting your repo with generated files and `.gitignore` entries.
+The index lives in your OS cache directory — **not** inside the project. No `.gitignore` needed.
 
-| Platform | Default location |
-|----------|-----------------|
-| **macOS** | `~/Library/Caches/context-bunker/<encoded-path>/index.db` |
-| **Linux** | `$XDG_CACHE_HOME/context-bunker/<encoded-path>/index.db` (defaults to `~/.cache/...`) |
-| **Windows** | `%LOCALAPPDATA%\context-bunker\<encoded-path>\index.db` |
+| Platform | Location |
+|----------|----------|
+| macOS | `~/Library/Caches/context-bunker/<project>/index.db` |
+| Linux | `~/.cache/context-bunker/<project>/index.db` |
+| Windows | `%LOCALAPPDATA%\context-bunker\<project>\index.db` |
 
-The `<encoded-path>` is derived from the project's absolute path (e.g. `/Users/toc/project` → `Users-toc-project`).
-
-### Storing locally
-
-If you prefer the index inside the project directory (e.g. for portability):
-
-```bash
-# CLI flag
-bun src/index.ts --local /path/to/project
-
-# Or in .context-bunker.json
-{ "storage": "local" }
-```
-
-Local storage places the DB at `<project>/.context-bunker/index.db`. Add `.context-bunker/` to your `.gitignore`.
-
-### Config precedence
-
-1. `--local` CLI flag (highest priority)
-2. `"storage": "local"` in `.context-bunker.json`
-3. Default: global cache directory
-
-## Known Limitations
-
-- **Go method call resolution**: Receiver methods (`s.Method()`) are indexed as `Type.Method` symbols but call graph doesn't fully resolve `receiver.Method()` calls to their definition. This would require type inference, which is out of scope for a tree-sitter-based tool.
-
-## Development Status
-
-| Phase | Description | Status |
-|-------|-------------|--------|
-| **Phase 1** | Foundation — scaffold, SQLite, tree-sitter, MCP shell | ✅ Complete |
-| **Phase 2** | Indexing engine — extractor, resolver, watcher, TF-IDF | ✅ Complete |
-| **Phase 3** | Core tools — 7 main intelligence tools | ✅ Complete |
-| **Phase 4** | Unique tools — session diff, dead code, patterns, search, summaries | ✅ Complete |
-| **Phase 5** | Polish — CLI, config, tests | ✅ Complete |
-| **Phase 6** | Publish — npm, MCP registries, launch | 🔲 Next |
+Want it inside the project instead? Use `--local` or set `{ "storage": "local" }` in `.context-bunker.json`.
 
 ## License
 
