@@ -88,10 +88,12 @@ export function getSymbolsByFile(db: DB, fileId: number) {
 }
 
 export function findSymbolsByName(db: DB, query: string, kind?: string, scope?: string) {
-  let sql = `SELECT s.*, f.path as file_path FROM symbols s JOIN files f ON s.file_id = f.id WHERE s.name LIKE ?`
-  const params: unknown[] = [query.replace(/\*/g, '%')]
+  // Escape SQL LIKE wildcards in the query (preserve * as user wildcard -> %)
+  const escaped = query.replace(/%/g, '!%').replace(/_/g, '!_').replace(/\*/g, '%')
+  let sql = `SELECT s.*, f.path as file_path FROM symbols s JOIN files f ON s.file_id = f.id WHERE s.name LIKE ? ESCAPE '!'`
+  const params: unknown[] = [escaped]
   if (kind) { sql += ' AND s.kind = ?'; params.push(kind) }
-  if (scope) { sql += ' AND f.path LIKE ?'; params.push(scope + '%') }
+  if (scope) { sql += ` AND f.path LIKE ? ESCAPE '!'`; params.push(scope.replace(/%/g, '!%').replace(/_/g, '!_') + '%') }
   sql += ' ORDER BY s.name LIMIT 100'
   return db.prepare(sql).all(...params) as (SymbolRow & { file_path: string })[]
 }

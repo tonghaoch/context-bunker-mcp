@@ -7,7 +7,7 @@ import { openDatabase } from './store/db.js'
 import { getStats, startSession } from './store/queries.js'
 import { indexProject, indexFile } from './indexer/indexer.js'
 import { initParser } from './indexer/parser.js'
-import { loadConfig } from './config.js'
+import { loadConfig, type Config } from './config.js'
 import { findSymbol } from './tools/find-symbol.js'
 import { findReferences } from './tools/find-references.js'
 import { getSmartContext } from './tools/get-smart-context.js'
@@ -25,6 +25,7 @@ import { searchCode } from './tools/search-code.js'
 export interface ServerState {
   db: DB
   projectRoot: string
+  config?: Config
 }
 
 export function createServer(state: ServerState) {
@@ -66,6 +67,7 @@ export function createServer(state: ServerState) {
       // Load config and index
       await initParser()
       const config = loadConfig(absPath)
+      state.config = config
       const result = await indexProject(state.db, absPath, undefined, config)
 
       // Start session
@@ -111,10 +113,10 @@ export function createServer(state: ServerState) {
       if (err) return text(err)
       if (file_path) {
         const fullPath = resolve(state.projectRoot, file_path)
-        const changed = await indexFile(state.db, fullPath, state.projectRoot)
+        const changed = await indexFile(state.db, fullPath, state.projectRoot, state.config)
         return text(changed ? `Re-indexed: ${file_path}` : `No changes: ${file_path}`)
       }
-      const result = await indexProject(state.db, state.projectRoot)
+      const result = await indexProject(state.db, state.projectRoot, undefined, state.config)
       return text(`Full re-index: ${result.indexed} indexed, ${result.skipped} unchanged, ${result.removed} removed (${result.timeMs}ms)`)
     }
   )

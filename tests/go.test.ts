@@ -26,7 +26,7 @@ afterAll(() => {
 describe('go extractor', () => {
   it('indexes all Go fixture files', () => {
     const stats = getStats(db)
-    expect(stats.files).toBe(2) // main.go, auth/auth.go
+    expect(stats.files).toBe(3) // main.go, auth/auth.go, auth/auth_test.go
   })
 
   it('extracts symbols from auth/auth.go', () => {

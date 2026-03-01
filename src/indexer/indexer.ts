@@ -32,7 +32,7 @@ function hashContent(content: string): string {
 
 // Simple glob matcher for include/exclude patterns
 // Supports: * (any within segment), ** (any depth), ? (single char)
-function matchGlob(pattern: string, path: string): boolean {
+export function matchGlob(pattern: string, path: string): boolean {
   const regex = pattern
     .replace(/\./g, '\\.')
     .replace(/\*\*/g, '{{GLOBSTAR}}')
@@ -42,7 +42,7 @@ function matchGlob(pattern: string, path: string): boolean {
   return new RegExp(`^${regex}$`).test(path)
 }
 
-function matchesAny(patterns: string[], path: string): boolean {
+export function matchesAny(patterns: string[], path: string): boolean {
   return patterns.some(p => matchGlob(p, path))
 }
 
@@ -74,7 +74,17 @@ export interface IndexResult {
 }
 
 export async function indexFile(db: DB, filePath: string, projectRoot: string, config?: Config): Promise<boolean> {
-  const relPath = relative(projectRoot, resolve(filePath))
+  const relPath = relative(projectRoot, resolve(filePath)).replace(/\\/g, '/')
+
+  // Skip files matching exclude patterns
+  if (config?.exclude && config.exclude.length > 0) {
+    if (matchesAny(config.exclude, relPath)) return false
+  }
+
+  // Skip files not matching include prefixes (when include is configured)
+  if (config?.include && config.include.length > 0) {
+    if (!config.include.some(prefix => relPath.startsWith(prefix))) return false
+  }
 
   // Skip files exceeding max size
   if (config?.maxFileSize) {
@@ -93,7 +103,8 @@ export async function indexFile(db: DB, filePath: string, projectRoot: string, c
 
   const hash = hashContent(content)
   const lines = content.split('\n').length
-  const mtime = statSync(filePath).mtimeMs
+  let mtime: number
+  try { mtime = statSync(filePath).mtimeMs } catch { mtime = Date.now() }
 
   // Check if file is unchanged
   const existing = getFile(db, relPath)

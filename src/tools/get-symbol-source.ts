@@ -27,13 +27,18 @@ export function getSymbolSource(db: DB, projectRoot: string, symbolName: string,
   const startIdx = sym.start_line - 1
   const endIdx = sym.end_line
 
-  // Include JSDoc if present (lines immediately before the symbol)
+  // Include JSDoc/doc comment if present (lines immediately before the symbol)
   let jsdocStart = startIdx
   if (sym.jsdoc) {
-    // Walk backwards to find the start of the JSDoc
+    // Walk backwards to find the start of the doc comment
     for (let i = startIdx - 1; i >= 0; i--) {
       const line = lines[i].trim()
-      if (line.startsWith('/**') || line.startsWith('*') || line.startsWith('*/')) {
+      if (
+        // TS/JS JSDoc: /** ... */
+        line.startsWith('/**') || line.startsWith('*') || line.startsWith('*/') ||
+        // Go godoc: // comments
+        line.startsWith('//')
+      ) {
         jsdocStart = i
       } else {
         break

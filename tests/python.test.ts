@@ -26,7 +26,7 @@ afterAll(() => {
 describe('python extractor', () => {
   it('indexes all Python fixture files', () => {
     const stats = getStats(db)
-    expect(stats.files).toBe(4) // app.py, auth.py, utils/__init__.py, utils/hash.py
+    expect(stats.files).toBe(5) // app.py, auth.py, utils/__init__.py, utils/hash.py, test_auth.py
   })
 
   it('extracts symbols from auth.py', () => {

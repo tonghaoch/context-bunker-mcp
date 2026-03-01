@@ -26,7 +26,7 @@ afterAll(() => {
 describe('indexer', () => {
   it('indexes all fixture files', () => {
     const stats = getStats(db)
-    expect(stats.files).toBe(5)
+    expect(stats.files).toBe(7) // 5 original + Button.tsx + models/types.ts (types.d.ts excluded)
   })
 
   it('extracts symbols from auth.ts', () => {
@@ -75,5 +75,45 @@ describe('indexer', () => {
   it('has non-zero call edges', () => {
     const stats = getStats(db)
     expect(stats.calls).toBeGreaterThan(0)
+  })
+
+  it('excludes .d.ts files from indexing', () => {
+    const file = getFile(db, 'src\\types.d.ts') ?? getFile(db, 'src/types.d.ts')
+    expect(file).toBeFalsy()
+  })
+
+  it('indexes TSX files', () => {
+    const file = getFile(db, 'src\\components\\Button.tsx') ?? getFile(db, 'src/components/Button.tsx')
+    expect(file).toBeTruthy()
+    const syms = getSymbolsByFile(db, file!.id)
+    const names = syms.map(s => s.name)
+    expect(names).toContain('fetchUser')
+    expect(names).toContain('Button')
+    expect(names).toContain('ButtonProps')
+  })
+
+  it('extracts class declarations', () => {
+    const file = getFile(db, 'src\\models\\types.ts') ?? getFile(db, 'src/models/types.ts')
+    expect(file).toBeTruthy()
+    const syms = getSymbolsByFile(db, file!.id)
+    const repo = syms.find(s => s.name === 'UserRepository')
+    expect(repo).toBeTruthy()
+    expect(repo!.kind).toBe('class')
+    expect(repo!.is_exported).toBe(1)
+  })
+
+  it('extracts enum declarations', () => {
+    const file = getFile(db, 'src\\models\\types.ts') ?? getFile(db, 'src/models/types.ts')
+    const syms = getSymbolsByFile(db, file!.id)
+    const role = syms.find(s => s.name === 'UserRole')
+    expect(role).toBeTruthy()
+    expect(role!.kind).toBe('enum')
+    expect(role!.is_exported).toBe(1)
+  })
+
+  it('skips re-indexing unchanged files', async () => {
+    const result = await indexProject(db, FIXTURE)
+    expect(result.indexed).toBe(0)
+    expect(result.skipped).toBeGreaterThan(0)
   })
 })

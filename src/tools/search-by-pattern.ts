@@ -11,7 +11,7 @@ const PATTERN_DESCRIPTIONS: Record<PatternType, string> = {
   test_files: 'Test files (*.test.*, *.spec.*, *_test.go, test_*.py)',
 }
 
-export function searchByPattern(db: DB, pattern: string) {
+export function searchByPattern(db: DB, pattern: string): string {
   if (!(pattern in PATTERN_DESCRIPTIONS)) {
     const available = Object.entries(PATTERN_DESCRIPTIONS)
       .map(([k, v]) => `  ${k} — ${v}`)
@@ -140,9 +140,10 @@ export function searchByPattern(db: DB, pattern: string) {
            OR path LIKE '%.spec.%'
            OR path LIKE '%__tests__%'
            OR path LIKE '%test/%'
-           OR path LIKE '%\\_test.go'
-           OR path LIKE '%\\_test.py'
-           OR path LIKE '%/test\\_%'
+           OR path LIKE '%!_test.go' ESCAPE '!'
+           OR path LIKE '%!_test.py' ESCAPE '!'
+           OR path LIKE '%/test!_%' ESCAPE '!'
+           OR path LIKE 'test!_%' ESCAPE '!'
         ORDER BY path
       `).all() as { path: string; lines: number }[]
       if (rows.length === 0) return 'No test files found.'
