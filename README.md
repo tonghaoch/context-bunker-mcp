@@ -1,5 +1,7 @@
 # Context Bunker MCP 🏗️
 
+[![Build & Test](https://github.com/tonghaoch/context-bunker-mcp/actions/workflows/build-and-test.yml/badge.svg?branch=main)](https://github.com/tonghaoch/context-bunker-mcp/actions/workflows/build-and-test.yml)
+
 > **Stop wasting tokens on orientation.** Pre-computed codebase intelligence for AI coding tools. One command. Code never leaves your machine.
 
 ## What is this?
