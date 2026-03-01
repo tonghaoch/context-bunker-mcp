@@ -4,7 +4,7 @@
   "description": "Pre-computed codebase intelligence MCP server. Zero API keys. Code never leaves your machine.",
   "type": "module",
   "bin": {
-    "context-bunker-mcp": "./dist/index.js"
+    "context-bunker-mcp": "dist/index.js"
   },
   "scripts": {
     "dev": "bun run src/index.ts",
@@ -43,6 +43,14 @@
   "files": [
     "dist/"
   ],
-  "keywords": ["mcp", "codebase", "indexer", "tree-sitter", "ai", "context", "code-intelligence"],
+  "keywords": [
+    "mcp",
+    "codebase",
+    "indexer",
+    "tree-sitter",
+    "ai",
+    "context",
+    "code-intelligence"
+  ],
   "license": "MIT"
 }
