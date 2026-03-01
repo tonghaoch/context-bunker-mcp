@@ -209,8 +209,27 @@ function extractCalls(node: SyntaxNode, parentSymbol?: string): ExtractedCall[] 
     const name = findChild(node, 'identifier')
     if (name) newParent = getTextOf(name)
   } else if (node.type === 'method_declaration') {
-    const name = findChild(node, 'field_identifier')
-    if (name) newParent = getTextOf(name)
+    const fieldId = findChild(node, 'field_identifier')
+    if (fieldId) {
+      const methodName = getTextOf(fieldId)
+      // Extract receiver type for full Type.Method name
+      const paramLists = findChildren(node, 'parameter_list')
+      const receiver = paramLists[0]
+      let receiverType = ''
+      if (receiver) {
+        const paramDecl = findChild(receiver, 'parameter_declaration')
+        if (paramDecl) {
+          const typeId = findChild(paramDecl, 'type_identifier')
+          const ptrType = findChild(paramDecl, 'pointer_type')
+          if (typeId) receiverType = getTextOf(typeId)
+          else if (ptrType) {
+            const inner = findChild(ptrType, 'type_identifier')
+            if (inner) receiverType = getTextOf(inner)
+          }
+        }
+      }
+      newParent = receiverType ? `${receiverType}.${methodName}` : methodName
+    }
   }
 
   for (let i = 0; i < node.childCount; i++) {

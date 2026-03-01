@@ -120,56 +120,59 @@ export async function indexFile(db: DB, filePath: string, projectRoot: string, c
   const result = extract(tree, filePath)
   if (!result) return false
 
-  // Store — wrap in transaction
-  upsertFile(db, relPath, hash, mtime, lines)
+  // Store — wrap writes in transaction for atomicity
+  const writeOps = db.transaction(() => {
+    upsertFile(db, relPath, hash, mtime, lines)
 
-  // Get file ID (upsert may not give us the ID on update)
-  const fileRow = getFile(db, relPath)
-  if (!fileRow) return false
-  const fid = fileRow.id
+    // Get file ID (upsert may not give us the ID on update)
+    const fileRow = getFile(db, relPath)
+    if (!fileRow) return false
+    const fid = fileRow.id
 
-  // Clear old data for this file
-  deleteSymbolsByFile(db, fid)
-  deleteImportsByFile(db, fid)
-  deleteExportsByFile(db, fid)
-  deleteCallsByFile(db, fid)
+    // Clear old data for this file
+    deleteSymbolsByFile(db, fid)
+    deleteImportsByFile(db, fid)
+    deleteExportsByFile(db, fid)
+    deleteCallsByFile(db, fid)
 
-  // Insert symbols
-  for (const sym of result.symbols) {
-    insertSymbol(db, fid, sym.name, sym.kind, sym.startLine, sym.endLine, sym.isExported, sym.signature, sym.jsdoc)
-  }
-
-  // Insert imports with resolved paths
-  const lang = getLanguageName(filePath) ?? undefined
-  for (const imp of result.imports) {
-    const { resolved, isExternal } = resolveImportPath(imp.fromPath, resolve(projectRoot, relPath), projectRoot, lang)
-    insertImport(db, fid, imp.symbol, resolved, imp.isTypeOnly, isExternal)
-  }
-
-  // Insert exports
-  for (const exp of result.exports) {
-    const originalPath = exp.originalPath
-      ? resolveImportPath(exp.originalPath, resolve(projectRoot, relPath), projectRoot, lang).resolved
-      : undefined
-    insertExport(db, fid, exp.symbol, exp.kind, exp.isReexport, originalPath)
-  }
-
-  // Insert calls — link to parent symbol if possible
-  for (const call of result.calls) {
-    let callerSymbolId = 0
-    if (call.parentSymbol) {
-      const parentSym = getSymbolByNameAndFile(db, call.parentSymbol, fid)
-      if (parentSym) callerSymbolId = parentSym.id
+    // Insert symbols
+    for (const sym of result.symbols) {
+      insertSymbol(db, fid, sym.name, sym.kind, sym.startLine, sym.endLine, sym.isExported, sym.signature, sym.jsdoc)
     }
-    if (callerSymbolId > 0) {
-      insertCall(db, callerSymbolId, call.calleeName, fid, call.line)
+
+    // Insert imports with resolved paths
+    const lang = getLanguageName(filePath) ?? undefined
+    for (const imp of result.imports) {
+      const { resolved, isExternal } = resolveImportPath(imp.fromPath, resolve(projectRoot, relPath), projectRoot, lang)
+      insertImport(db, fid, imp.symbol, resolved, imp.isTypeOnly, isExternal)
     }
-  }
 
-  // Update TF-IDF
-  updateFileTFIDF(db, fid, content)
+    // Insert exports
+    for (const exp of result.exports) {
+      const originalPath = exp.originalPath
+        ? resolveImportPath(exp.originalPath, resolve(projectRoot, relPath), projectRoot, lang).resolved
+        : undefined
+      insertExport(db, fid, exp.symbol, exp.kind, exp.isReexport, originalPath)
+    }
 
-  return true
+    // Insert calls — link to parent symbol if possible
+    for (const call of result.calls) {
+      let callerSymbolId = 0
+      if (call.parentSymbol) {
+        const parentSym = getSymbolByNameAndFile(db, call.parentSymbol, fid)
+        if (parentSym) callerSymbolId = parentSym.id
+      }
+      if (callerSymbolId > 0) {
+        insertCall(db, callerSymbolId, call.calleeName, fid, call.line)
+      }
+    }
+
+    // Update TF-IDF
+    updateFileTFIDF(db, fid, content)
+    return true
+  })
+
+  return writeOps()
 }
 
 export async function removeFile(db: DB, filePath: string, projectRoot: string) {
@@ -209,15 +212,23 @@ export async function indexProject(db: DB, projectRoot: string, log?: (...args: 
 
   let indexed = 0, skipped = 0, errors = 0
 
-  for (const filePath of filteredFiles) {
-    try {
-      const changed = await indexFile(db, filePath, projectRoot, config)
-      if (changed) indexed++
-      else skipped++
-    } catch (e) {
-      errors++
-      log?.(`Error indexing ${filePath}:`, e)
+  // Wrap batch in a single transaction for performance
+  db.exec('BEGIN')
+  try {
+    for (const filePath of filteredFiles) {
+      try {
+        const changed = await indexFile(db, filePath, projectRoot, config)
+        if (changed) indexed++
+        else skipped++
+      } catch (e) {
+        errors++
+        log?.(`Error indexing ${filePath}:`, e)
+      }
     }
+    db.exec('COMMIT')
+  } catch (e) {
+    db.exec('ROLLBACK')
+    throw e
   }
 
   // Remove files from DB that no longer exist on disk

@@ -150,11 +150,11 @@ describe('resolveImportPath', () => {
     expect(result.isExternal).toBe(true)
   })
 
-  it('resolves Go local import via go.mod', () => {
+  it('resolves Go local import via go.mod to .go file', () => {
     const importing = resolve(GO_FIXTURE, 'main.go')
     const result = resolveImportPath('example.com/small-go/auth', importing, GO_FIXTURE, 'go')
     expect(result.isExternal).toBe(false)
-    expect(result.resolved).toBe('auth')
+    expect(result.resolved).toBe('auth/auth.go')
   })
 
   it('marks Go stdlib as external', () => {

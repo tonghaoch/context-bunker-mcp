@@ -4,10 +4,12 @@ import { resolve, join } from 'node:path'
 import { existsSync } from 'node:fs'
 import type { DB } from './store/db.js'
 import { openDatabase } from './store/db.js'
-import { getStats, startSession } from './store/queries.js'
-import { indexProject, indexFile } from './indexer/indexer.js'
+import { getStats, startSession, endSession } from './store/queries.js'
+import { indexProject, indexFile, removeFile } from './indexer/indexer.js'
 import { initParser } from './indexer/parser.js'
+import { startWatcher } from './indexer/watcher.js'
 import { loadConfig, type Config } from './config.js'
+import { buildFileSnapshot } from './tools/get-changes.js'
 import { findSymbol } from './tools/find-symbol.js'
 import { findReferences } from './tools/find-references.js'
 import { getSmartContext } from './tools/get-smart-context.js'
@@ -26,6 +28,8 @@ export interface ServerState {
   db: DB
   projectRoot: string
   config?: Config
+  stopWatcher?: () => Promise<void>
+  sessionId?: number
 }
 
 export function createServer(state: ServerState) {
@@ -54,6 +58,16 @@ export function createServer(state: ServerState) {
       const absPath = resolve(projectPath)
       if (!existsSync(absPath)) return text(`Directory not found: ${absPath}`)
 
+      // Stop old watcher and end old session before switching
+      if (state.stopWatcher) {
+        await state.stopWatcher()
+        state.stopWatcher = undefined
+      }
+      if (state.sessionId != null && state.db) {
+        endSession(state.db, state.sessionId, buildFileSnapshot(state.db))
+        state.sessionId = undefined
+      }
+
       // Close old DB if switching projects
       if (state.db && state.projectRoot !== absPath) {
         try { state.db.close() } catch { /* ignore */ }
@@ -70,8 +84,17 @@ export function createServer(state: ServerState) {
       state.config = config
       const result = await indexProject(state.db, absPath, undefined, config)
 
+      // Start new watcher
+      const watcher = startWatcher(absPath, {
+        onAdd: async (path) => { await indexFile(state.db, path, absPath, config) },
+        onChange: async (path) => { await indexFile(state.db, path, absPath, config) },
+        onUnlink: async (path) => { await removeFile(state.db, path, absPath) },
+      })
+      state.stopWatcher = () => watcher.close()
+
       // Start session
-      startSession(state.db)
+      const sr = startSession(state.db)
+      state.sessionId = Number(sr.lastInsertRowid)
 
       return text([
         `Project set: ${absPath}`,

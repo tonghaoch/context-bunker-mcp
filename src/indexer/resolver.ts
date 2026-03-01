@@ -1,5 +1,5 @@
 import { resolve, dirname, join, relative, isAbsolute } from 'node:path'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 
 interface TsConfigPaths {
   baseUrl?: string
@@ -134,6 +134,16 @@ function resolveGoImport(
   const moduleName = loadGoModule(projectRoot)
   if (moduleName && fromPath.startsWith(moduleName + '/')) {
     const localPath = fromPath.slice(moduleName.length + 1)
+    // Go imports resolve to package directories — try to find actual .go files
+    const dirPath = join(projectRoot, localPath)
+    if (existsSync(dirPath)) {
+      try {
+        const files = readdirSync(dirPath).filter(f => f.endsWith('.go') && !f.endsWith('_test.go'))
+        if (files.length > 0) {
+          return { resolved: join(localPath, files[0]), isExternal: false }
+        }
+      } catch { /* fallthrough */ }
+    }
     return { resolved: localPath, isExternal: false }
   }
   return { resolved: fromPath, isExternal: true }

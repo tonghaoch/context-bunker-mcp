@@ -224,11 +224,9 @@ describe('tools against Go fixture', () => {
   })
 
   describe('get_dependency_graph', () => {
-    it('returns no deps message for Go files with package imports', () => {
-      // Go imports resolve to package dir ('auth') not file ('auth/auth.go')
-      // so dependency graph can't link them — this is a known limitation
+    it('resolves Go package imports to actual .go files', () => {
       const result = getDependencyGraph(goDb, 'main.go', 'dependencies', 2)
-      expect(result).toContain('No dependencies found')
+      expect(result).toContain('auth/auth.go')
     })
   })
 })

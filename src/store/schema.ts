@@ -1,5 +1,11 @@
 export const SCHEMA_VERSION = 1
 
+// Each migration runs when stored version < migration.version
+// Add new migrations at the end with incrementing version numbers
+export const MIGRATIONS: { version: number; sql: string }[] = [
+  // Example: { version: 2, sql: 'ALTER TABLE symbols ADD COLUMN namespace TEXT;' }
+]
+
 export const CREATE_TABLES = `
 CREATE TABLE IF NOT EXISTS meta (
   key TEXT PRIMARY KEY,

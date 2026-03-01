@@ -91,9 +91,6 @@ async function main() {
   const state: ServerState = {} as ServerState
 
   // If project path given, index it upfront
-  let sessionId: number | undefined
-  let watcher: { close: () => Promise<void> } | undefined
-
   if (projectArg) {
     const projectRoot = resolve(projectArg)
     log('Project root:', projectRoot)
@@ -109,18 +106,19 @@ async function main() {
 
     // File watcher
     if (!noWatch) {
-      watcher = startWatcher(projectRoot, {
+      const watcher = startWatcher(projectRoot, {
         onAdd: async (path) => { log('File added:', path); await indexFile(state.db, path, projectRoot, config) },
         onChange: async (path) => { log('File changed:', path); await indexFile(state.db, path, projectRoot, config) },
         onUnlink: async (path) => { log('File removed:', path); await removeFile(state.db, path, projectRoot) },
       })
+      state.stopWatcher = () => watcher.close()
       log('File watcher started')
     }
 
     // Session tracking
     const sr = startSession(state.db)
-    sessionId = Number(sr.lastInsertRowid)
-    log('Session started:', sessionId)
+    state.sessionId = Number(sr.lastInsertRowid)
+    log('Session started:', state.sessionId)
   } else {
     log('No project specified. AI can call set_project(path) to select a project.')
   }
@@ -136,12 +134,12 @@ async function main() {
   // Graceful shutdown
   const shutdown = async () => {
     log('Shutting down...')
-    if (state.db && sessionId != null) {
+    if (state.db && state.sessionId != null) {
       const snapshot = buildFileSnapshot(state.db)
-      endSession(state.db, sessionId, snapshot)
+      endSession(state.db, state.sessionId, snapshot)
       log('Session saved')
     }
-    if (watcher) await watcher.close()
+    if (state.stopWatcher) await state.stopWatcher()
     if (state.db) state.db.close()
     process.exit(0)
   }

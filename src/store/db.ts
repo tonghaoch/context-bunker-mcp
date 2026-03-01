@@ -1,4 +1,4 @@
-import { CREATE_TABLES, SCHEMA_VERSION } from './schema.js'
+import { CREATE_TABLES, SCHEMA_VERSION, MIGRATIONS } from './schema.js'
 import { mkdirSync, existsSync } from 'node:fs'
 import { dirname } from 'node:path'
 
@@ -59,6 +59,15 @@ async function openBetterSqlite3(dbPath: string): Promise<DB> {
   }
 }
 
+export function getMeta(db: DB, key: string): string | undefined {
+  const row = db.prepare('SELECT value FROM meta WHERE key = ?').get(key) as { value: string } | undefined
+  return row?.value
+}
+
+export function setMeta(db: DB, key: string, value: string): void {
+  db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)').run(key, value)
+}
+
 export async function openDatabase(dbPath: string): Promise<DB> {
   const dir = dirname(dbPath)
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
@@ -69,9 +78,25 @@ export async function openDatabase(dbPath: string): Promise<DB> {
 
   // Init schema — always run CREATE TABLE IF NOT EXISTS first
   db.exec(CREATE_TABLES)
-  const version = db.prepare('SELECT value FROM meta WHERE key = ?').get('schema_version') as { value: string } | undefined
-  if (!version) {
-    db.prepare('INSERT INTO meta (key, value) VALUES (?, ?)').run('schema_version', String(SCHEMA_VERSION))
+
+  const stored = Number(getMeta(db, 'schema_version') ?? '0')
+  if (stored < SCHEMA_VERSION) {
+    // Run pending migrations in a transaction
+    const pending = MIGRATIONS.filter(m => m.version > stored)
+    if (pending.length > 0) {
+      const migrate = db.transaction(() => {
+        for (const m of pending) {
+          db.exec(m.sql)
+        }
+        setMeta(db, 'schema_version', String(SCHEMA_VERSION))
+      })
+      migrate()
+    } else {
+      // No migrations needed (fresh DB or version gap with no migrations)
+      setMeta(db, 'schema_version', String(SCHEMA_VERSION))
+    }
+  } else if (stored > SCHEMA_VERSION) {
+    console.error(`[context-bunker] Warning: DB schema version (${stored}) is newer than code (${SCHEMA_VERSION}). Continuing anyway.`)
   }
 
   return db

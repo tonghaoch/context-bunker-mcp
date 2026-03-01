@@ -81,7 +81,8 @@ context-bunker is **not** a grep replacement. It's for things grep structurally 
 |----------|-----------|--------|
 | **P0** | TypeScript, JavaScript (TSX/JSX/MTS/CTS) | ✅ Complete |
 | **P1** | Python, Go | ✅ Complete |
-| **P2** | Rust, Java, C/C++ | 🔲 Planned |
+| **P2** | Rust | ✅ Complete |
+| **P2** | Java, C/C++ | 🔲 Planned |
 
 Tree-sitter WASM grammars are loaded from `tree-sitter-wasms` (npm dependency). Adding a new language requires writing an extractor in `src/languages/`.
 
@@ -118,6 +119,10 @@ git clone https://github.com/tonghaoch/context-bunker-mcp.git
 cd context-bunker-mcp
 bun install
 ```
+
+## Known Limitations
+
+- **Go method call resolution**: Receiver methods (`s.Method()`) are indexed as `Type.Method` symbols but call graph doesn't fully resolve `receiver.Method()` calls to their definition. This would require type inference, which is out of scope for a tree-sitter-based tool.
 
 ## Development Status
 
