@@ -35,7 +35,7 @@ export interface ServerState {
 export function createServer(state: ServerState) {
   const server = new McpServer({
     name: 'context-bunker',
-    version: '0.1.0',
+    version: '0.1.1',
   })
 
   const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] })
