@@ -1,16 +1,29 @@
 {
-  "name": "context-bunker",
+  "name": "context-bunker-mcp",
   "version": "0.1.0",
   "description": "Pre-computed codebase intelligence MCP server. Zero API keys. Code never leaves your machine.",
   "type": "module",
   "bin": {
-    "context-bunker": "./dist/index.js"
+    "context-bunker-mcp": "./dist/index.js"
   },
   "scripts": {
     "dev": "bun run src/index.ts",
-    "build": "bun build src/index.ts --outdir dist --target node --format esm",
+    "build": "bun build src/index.ts --outdir dist --target node --format esm --external web-tree-sitter --external better-sqlite3",
     "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test",
+    "prepublishOnly": "bun run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tonghaoch/context-bunker-mcp.git"
+  },
+  "homepage": "https://github.com/tonghaoch/context-bunker-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/tonghaoch/context-bunker-mcp/issues"
+  },
+  "author": "Michael Chen",
+  "engines": {
+    "node": ">=18"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",

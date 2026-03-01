@@ -1,4 +1,5 @@
-import { join, extname } from 'node:path'
+import { join, dirname, extname } from 'node:path'
+import { createRequire } from 'node:module'
 import { readFileSync } from 'node:fs'
 import TreeSitter from 'web-tree-sitter'
 
@@ -27,11 +28,9 @@ let parser: TreeSitter | null = null
 const languageCache = new Map<string, Language>()
 
 function getWasmPath(langName: string): string {
-  // Resolve from tree-sitter-wasms package
-  const wasmDir = join(
-    import.meta.dirname ?? __dirname,
-    '..', '..', 'node_modules', 'tree-sitter-wasms', 'out'
-  )
+  // Use createRequire to resolve at runtime (not baked-in __dirname)
+  const req = createRequire(import.meta.url)
+  const wasmDir = join(dirname(req.resolve('tree-sitter-wasms/package.json')), 'out')
   return join(wasmDir, `tree-sitter-${langName}.wasm`)
 }
 

@@ -26,10 +26,10 @@ function log(...msg: unknown[]) {
 
 // ── Help ──
 if (showHelp) {
-  console.log(`context-bunker — Pre-computed codebase intelligence MCP server
+  console.log(`context-bunker-mcp — Pre-computed codebase intelligence MCP server
 
 Usage:
-  bun src/index.ts [project-root] [options]
+  context-bunker-mcp [project-root] [options]
 
 Options:
   --help, -h       Show this help message
@@ -43,13 +43,13 @@ If no project-root is given, the server starts without a project.
 The AI can then call set_project(path) to dynamically select a project.
 
 Examples:
-  bun src/index.ts                     # Start server, AI calls set_project later
-  bun src/index.ts /path/to/project    # Index specific project at startup
-  bun src/index.ts --init              # Create config file in current directory
-  bun src/index.ts --status            # Show index stats
+  context-bunker-mcp                       # Start server, AI calls set_project later
+  context-bunker-mcp /path/to/project      # Index specific project at startup
+  context-bunker-mcp --init                # Create config file in current directory
+  context-bunker-mcp --status              # Show index stats
 
 MCP setup (Claude Code):
-  claude mcp add context-bunker -- bun /path/to/context-bunker/src/index.ts
+  claude mcp add context-bunker -- npx context-bunker-mcp
 `)
   process.exit(0)
 }

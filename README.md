@@ -16,14 +16,14 @@ Works with Claude Code, Cursor, Windsurf, Copilot, and any MCP-compatible client
 
 ## Setup
 
-Available via Bun (`bunx context-bunker`) or Node.js (`npx context-bunker`).
-
 ### Install
 
 ```bash
-git clone https://github.com/tonghaoch/context-bunker-mcp.git
-cd context-bunker-mcp
-bun install
+# Run directly — no install needed
+npx context-bunker-mcp /your/project
+
+# Or install globally
+npm install -g context-bunker-mcp
 ```
 
 ### Add to your AI tool
@@ -31,10 +31,10 @@ bun install
 **Claude Code:**
 ```bash
 # With a project (auto-indexes on startup)
-claude mcp add context-bunker -- bun /path/to/context-bunker/src/index.ts /your/project
+claude mcp add context-bunker -- npx context-bunker-mcp /your/project
 
 # Without a project (AI calls set_project dynamically)
-claude mcp add context-bunker -- bun /path/to/context-bunker/src/index.ts
+claude mcp add context-bunker -- npx context-bunker-mcp
 ```
 
 **Cursor / Windsurf / VS Code** — add to `settings.json`:
@@ -42,8 +42,8 @@ claude mcp add context-bunker -- bun /path/to/context-bunker/src/index.ts
 {
   "mcpServers": {
     "context-bunker": {
-      "command": "bun",
-      "args": ["/path/to/context-bunker/src/index.ts", "/your/project"]
+      "command": "npx",
+      "args": ["context-bunker-mcp", "/your/project"]
     }
   }
 }
