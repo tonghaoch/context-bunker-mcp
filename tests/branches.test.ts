@@ -307,7 +307,7 @@ describe('getFileSummary branches', () => {
   it('shows time ago in output', () => {
     const result = getFileSummary(db, 'src/auth.ts')
     // Should contain some time indication
-    expect(result).toMatch(/modified .+(ago|just now)/)
+    expect(result).toMatch(/modified .*(ago|just now)/)
   })
 })
 
