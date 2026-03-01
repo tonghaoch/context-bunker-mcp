@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
-import { resolve, join } from 'node:path'
+import { resolve } from 'node:path'
 import { existsSync } from 'node:fs'
 import type { DB } from './store/db.js'
 import { openDatabase } from './store/db.js'
@@ -8,7 +8,7 @@ import { getStats, startSession, endSession } from './store/queries.js'
 import { indexProject, indexFile, removeFile } from './indexer/indexer.js'
 import { initParser } from './indexer/parser.js'
 import { startWatcher } from './indexer/watcher.js'
-import { loadConfig, type Config } from './config.js'
+import { loadConfig, getDbPath, type Config } from './config.js'
 import { buildFileSnapshot } from './tools/get-changes.js'
 import { findSymbol } from './tools/find-symbol.js'
 import { findReferences } from './tools/find-references.js'
@@ -73,15 +73,17 @@ export function createServer(state: ServerState) {
         try { state.db.close() } catch { /* ignore */ }
       }
 
-      // Open new DB
-      const dbPath = join(absPath, '.context-bunker', 'index.db')
-      state.db = await openDatabase(dbPath)
-      state.projectRoot = absPath
-
-      // Load config and index
+      // Load config first to determine storage location
       await initParser()
       const config = loadConfig(absPath)
       state.config = config
+
+      // Open new DB
+      const dbPath = getDbPath(absPath, config.storage)
+      state.db = await openDatabase(dbPath)
+      state.projectRoot = absPath
+
+      // Index
       const result = await indexProject(state.db, absPath, undefined, config)
 
       // Start new watcher

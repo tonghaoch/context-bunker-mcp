@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
-import { resolve, join } from 'node:path'
+import { resolve } from 'node:path'
 import { openDatabase } from './store/db.js'
 import { initParser } from './indexer/parser.js'
 import { indexProject, indexFile, removeFile } from './indexer/indexer.js'
@@ -8,12 +8,13 @@ import { startWatcher } from './indexer/watcher.js'
 import { createServer, type ServerState } from './server.js'
 import { startSession, endSession, getStats } from './store/queries.js'
 import { buildFileSnapshot } from './tools/get-changes.js'
-import { loadConfig, initConfig } from './config.js'
+import { loadConfig, initConfig, getDbPath } from './config.js'
 
 // ── CLI Args ──
 const args = process.argv.slice(2)
 const verbose = args.includes('--verbose') || args.includes('-v')
 const noWatch = args.includes('--no-watch')
+const useLocal = args.includes('--local')
 const showHelp = args.includes('--help') || args.includes('-h')
 const doInit = args.includes('--init')
 const showStatus = args.includes('--status')
@@ -36,6 +37,7 @@ Options:
   --status         Show index stats and exit
   --verbose, -v    Verbose logging to stderr
   --no-watch       Disable file watcher
+  --local          Store index in project directory instead of global cache
 
 If no project-root is given, the server starts without a project.
 The AI can then call set_project(path) to dynamically select a project.
@@ -62,7 +64,9 @@ if (doInit) {
 // ── Status ──
 if (showStatus) {
   const root = resolve(projectArg ?? '.')
-  const dbPath = join(root, '.context-bunker', 'index.db')
+  const config = loadConfig(root)
+  const storage = useLocal ? 'local' : config.storage
+  const dbPath = getDbPath(root, storage)
   try {
     const db = await openDatabase(dbPath)
     const stats = getStats(db)
@@ -96,9 +100,11 @@ async function main() {
     log('Project root:', projectRoot)
 
     const config = loadConfig(projectRoot)
-    const dbPath = join(projectRoot, '.context-bunker', 'index.db')
+    const storage = useLocal ? 'local' : config.storage
+    const dbPath = getDbPath(projectRoot, storage)
     state.db = await openDatabase(dbPath)
     state.projectRoot = projectRoot
+    state.config = config
 
     log('Indexing project...')
     const result = await indexProject(state.db, projectRoot, log, config)

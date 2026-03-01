@@ -5,7 +5,7 @@ import { openDatabase, type DB } from '../src/store/db.js'
 import { initParser } from '../src/indexer/parser.js'
 import { indexProject } from '../src/indexer/indexer.js'
 import { getFile, getStats } from '../src/store/queries.js'
-import { loadConfig, DEFAULT_CONFIG } from '../src/config.js'
+import { loadConfig, DEFAULT_CONFIG, getDbPath, encodeProjectPath } from '../src/config.js'
 
 const TS_FIXTURE = join(import.meta.dir, 'fixtures', 'small-ts')
 
@@ -131,5 +131,112 @@ describe('indexer filtering', () => {
 
     langDb.close()
     rmSync(join(import.meta.dir, '.tmp-lang-filter-test'), { recursive: true, force: true })
+  })
+})
+
+// ── encodeProjectPath ───────────────────────────────────────
+
+describe('encodeProjectPath', () => {
+  it('encodes Unix absolute path', () => {
+    expect(encodeProjectPath('/Users/toc/Desktop/project')).toBe('Users-toc-Desktop-project')
+  })
+
+  it('strips leading dash after replacing separator', () => {
+    expect(encodeProjectPath('/foo/bar')).toBe('foo-bar')
+    expect(encodeProjectPath('/foo/bar')[0]).not.toBe('-')
+  })
+
+  it('encodes Windows path with backslashes and drive letter', () => {
+    expect(encodeProjectPath('C:\\Users\\toc\\project')).toBe('C-Users-toc-project')
+  })
+
+  it('handles path with mixed separators', () => {
+    const result = encodeProjectPath('/home/user\\mixed/path')
+    expect(result).toBe('home-user-mixed-path')
+  })
+
+  it('handles single segment path', () => {
+    expect(encodeProjectPath('/project')).toBe('project')
+  })
+})
+
+// ── getDbPath ───────────────────────────────────────────────
+
+describe('getDbPath', () => {
+  it('returns local path when storage is "local"', () => {
+    const result = getDbPath('/my/project', 'local')
+    expect(result).toBe(join('/my/project', '.context-bunker', 'index.db'))
+  })
+
+  it('returns global cache path when storage is "global"', () => {
+    const result = getDbPath('/my/project', 'global')
+    // Should NOT be inside the project directory
+    expect(result).not.toContain('/my/project/.context-bunker')
+    // Should end with index.db
+    expect(result).toEndWith('index.db')
+    // Should contain the encoded project path
+    expect(result).toContain('context-bunker')
+    expect(result).toContain('my-project')
+  })
+
+  it('defaults to global when storage is not specified', () => {
+    const result = getDbPath('/my/project')
+    expect(result).not.toContain('/my/project/.context-bunker')
+    expect(result).toEndWith('index.db')
+  })
+
+  it('global path is platform-specific cache directory', () => {
+    const result = getDbPath('/test/path', 'global')
+    if (process.platform === 'darwin') {
+      expect(result).toContain('Library/Caches')
+    } else if (process.platform === 'win32') {
+      expect(result).toContain('AppData')
+    } else {
+      // Linux — either XDG_CACHE_HOME or ~/.cache
+      expect(result).toContain('.cache')
+    }
+  })
+
+  it('different projects get different global paths', () => {
+    const path1 = getDbPath('/project/one', 'global')
+    const path2 = getDbPath('/project/two', 'global')
+    expect(path1).not.toBe(path2)
+  })
+})
+
+// ── loadConfig storage option ───────────────────────────────
+
+describe('loadConfig storage option', () => {
+  it('defaults storage to "global"', () => {
+    const config = loadConfig('/tmp/nonexistent-path-99999')
+    expect(config.storage).toBe('global')
+  })
+
+  it('reads storage: "local" from config file', () => {
+    const tmpDir = join(import.meta.dir, '.tmp-config-storage-test')
+    rmSync(tmpDir, { recursive: true, force: true })
+    mkdirSync(tmpDir, { recursive: true })
+    writeFileSync(join(tmpDir, '.context-bunker.json'), JSON.stringify({
+      storage: 'local',
+    }))
+    const config = loadConfig(tmpDir)
+    expect(config.storage).toBe('local')
+    rmSync(tmpDir, { recursive: true, force: true })
+  })
+
+  it('falls back to "global" for invalid storage value', () => {
+    const tmpDir = join(import.meta.dir, '.tmp-config-storage-invalid')
+    rmSync(tmpDir, { recursive: true, force: true })
+    mkdirSync(tmpDir, { recursive: true })
+    writeFileSync(join(tmpDir, '.context-bunker.json'), JSON.stringify({
+      storage: 'cloud',
+    }))
+    const config = loadConfig(tmpDir)
+    expect(config.storage).toBe('global')
+    rmSync(tmpDir, { recursive: true, force: true })
+  })
+
+  it('DEFAULT_CONFIG has storage: "global"', () => {
+    expect(DEFAULT_CONFIG.storage).toBe('global')
   })
 })

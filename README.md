@@ -120,6 +120,38 @@ cd context-bunker-mcp
 bun install
 ```
 
+## Storage
+
+By default, the SQLite index is stored in your OS cache directory — **not** inside the project. This avoids polluting your repo with generated files and `.gitignore` entries.
+
+| Platform | Default location |
+|----------|-----------------|
+| **macOS** | `~/Library/Caches/context-bunker/<encoded-path>/index.db` |
+| **Linux** | `$XDG_CACHE_HOME/context-bunker/<encoded-path>/index.db` (defaults to `~/.cache/...`) |
+| **Windows** | `%LOCALAPPDATA%\context-bunker\<encoded-path>\index.db` |
+
+The `<encoded-path>` is derived from the project's absolute path (e.g. `/Users/toc/project` → `Users-toc-project`).
+
+### Storing locally
+
+If you prefer the index inside the project directory (e.g. for portability):
+
+```bash
+# CLI flag
+bun src/index.ts --local /path/to/project
+
+# Or in .context-bunker.json
+{ "storage": "local" }
+```
+
+Local storage places the DB at `<project>/.context-bunker/index.db`. Add `.context-bunker/` to your `.gitignore`.
+
+### Config precedence
+
+1. `--local` CLI flag (highest priority)
+2. `"storage": "local"` in `.context-bunker.json`
+3. Default: global cache directory
+
 ## Known Limitations
 
 - **Go method call resolution**: Receiver methods (`s.Method()`) are indexed as `Type.Method` symbols but call graph doesn't fully resolve `receiver.Method()` calls to their definition. This would require type inference, which is out of scope for a tree-sitter-based tool.
