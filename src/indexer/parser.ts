@@ -17,6 +17,8 @@ const LANG_MAP: Record<string, string> = {
   '.py': 'python',
   '.go': 'go',
   '.rs': 'rust',
+  '.java': 'java',
+  '.cs': 'c_sharp',
 }
 
 const SUPPORTED_EXTENSIONS = new Set(Object.keys(LANG_MAP))

@@ -185,6 +185,46 @@ function resolveRustImport(
   return { resolved: fromPath, isExternal: true }
 }
 
+const JAVA_SOURCE_ROOTS = ['src/main/java', 'src']
+
+function resolveJavaImport(
+  fromPath: string,
+  projectRoot: string,
+): { resolved: string; isExternal: boolean } {
+  // Convert dots to path separators: com.example.User → com/example/User
+  const asPath = fromPath.replace(/\.\*/g, '').replace(/\./g, '/')
+  // Try common source roots
+  for (const srcRoot of JAVA_SOURCE_ROOTS) {
+    const candidate = join(projectRoot, srcRoot, asPath + '.java')
+    if (existsSync(candidate)) {
+      return { resolved: relative(projectRoot, candidate), isExternal: false }
+    }
+    // Try as directory (package import)
+    const dirCandidate = join(projectRoot, srcRoot, asPath)
+    if (existsSync(dirCandidate)) {
+      try {
+        const files = readdirSync(dirCandidate).filter(f => f.endsWith('.java'))
+        if (files.length > 0) {
+          return { resolved: join(relative(projectRoot, dirCandidate), files[0]), isExternal: false }
+        }
+      } catch { /* fallthrough */ }
+    }
+  }
+  // Try project root directly
+  const directCandidate = join(projectRoot, asPath + '.java')
+  if (existsSync(directCandidate)) {
+    return { resolved: relative(projectRoot, directCandidate), isExternal: false }
+  }
+  return { resolved: fromPath, isExternal: true }
+}
+
+function resolveCSharpImport(
+  fromPath: string,
+): { resolved: string; isExternal: boolean } {
+  // C# namespaces don't map to filesystem — mark all as external
+  return { resolved: fromPath, isExternal: true }
+}
+
 export function resolveImportPath(
   fromPath: string,
   importingFile: string,
@@ -194,6 +234,8 @@ export function resolveImportPath(
   if (language === 'python') return resolvePythonImport(fromPath, importingFile, projectRoot)
   if (language === 'go') return resolveGoImport(fromPath, projectRoot)
   if (language === 'rust') return resolveRustImport(fromPath, importingFile, projectRoot)
+  if (language === 'java') return resolveJavaImport(fromPath, projectRoot)
+  if (language === 'c_sharp') return resolveCSharpImport(fromPath)
   // External module (no relative path prefix, no alias match)
   if (!fromPath.startsWith('.') && !fromPath.startsWith('/')) {
     // Check tsconfig paths first
