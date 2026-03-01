@@ -1,5 +1,5 @@
 import type { DB } from '../store/db.js'
-import { getFile, getImportsByFile, getImportersOf, getAllFiles } from '../store/queries.js'
+import { getFile, getImportsByFile, getImportersOf } from '../store/queries.js'
 import { normalizePath } from '../utils/paths.js'
 
 interface GraphNode {
@@ -74,7 +74,7 @@ export function getDependencyGraph(
         })
       }
 
-      for (const [depFile, syms] of byFile) {
+      for (const [depFile] of byFile) {
         if (!visited.has(depFile) && current.depth < maxDepth) {
           visited.add(depFile)
           queue.push({ file: depFile, depth: current.depth + 1, via: current.file })

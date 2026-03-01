@@ -1,4 +1,3 @@
-import { dirname } from 'node:path'
 import type { DB } from '../store/db.js'
 import { getAllFiles, getExportsByFile, getSymbolsByFile } from '../store/queries.js'
 

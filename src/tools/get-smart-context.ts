@@ -39,19 +39,44 @@ export function getSmartContext(db: DB, filePath: string) {
   })
 
   // Find test file
-  const name = basename(filePath).replace(/\.(ts|tsx|js|jsx|mjs|cjs)$/, '')
+  const name = basename(filePath).replace(/\.(ts|tsx|js|jsx|mjs|cjs|mts|cts|py|go)$/, '')
   const dir = dirname(filePath)
-  const testPatterns = [
-    `${name}.test`, `${name}.spec`, `${name}_test`,
-    `__tests__/${name}`, `test/${name}`,
-  ]
+  const ext = filePath.match(/\.(ts|tsx|js|jsx|mjs|cjs|mts|cts|py|go)$/)?.[0] ?? ''
+
+  // Build test patterns based on file extension
+  const testPatterns: { pattern: string; extensions: string[] }[] = []
+
+  if (ext === '.py') {
+    // Python conventions: test_foo.py, foo_test.py, tests/foo.py
+    testPatterns.push(
+      { pattern: `test_${name}`, extensions: ['.py'] },
+      { pattern: `${name}_test`, extensions: ['.py'] },
+      { pattern: `tests/${name}`, extensions: ['.py'] },
+      { pattern: `test/${name}`, extensions: ['.py'] },
+    )
+  } else if (ext === '.go') {
+    // Go convention: foo_test.go
+    testPatterns.push(
+      { pattern: `${name}_test`, extensions: ['.go'] },
+    )
+  } else {
+    // TypeScript/JavaScript conventions
+    testPatterns.push(
+      { pattern: `${name}.test`, extensions: ['.ts', '.tsx', '.js', '.jsx', '.mts'] },
+      { pattern: `${name}.spec`, extensions: ['.ts', '.tsx', '.js', '.jsx', '.mts'] },
+      { pattern: `${name}_test`, extensions: ['.ts', '.tsx', '.js', '.jsx', '.mts'] },
+      { pattern: `__tests__/${name}`, extensions: ['.ts', '.tsx', '.js', '.jsx'] },
+      { pattern: `test/${name}`, extensions: ['.ts', '.tsx', '.js', '.jsx'] },
+    )
+  }
+
   let testFile: string | null = null
-  for (const pat of testPatterns) {
-    for (const ext of ['.ts', '.tsx', '.js', '.jsx']) {
-      const candidate = join(dir, pat + ext)
+  for (const { pattern, extensions } of testPatterns) {
+    for (const testExt of extensions) {
+      const candidate = join(dir, pattern + testExt)
       if (getFile(db, candidate)) { testFile = candidate; break }
       // Also check tests/ subdirectory
-      const candidate2 = join(dir, '..', 'tests', basename(dir), pat + ext)
+      const candidate2 = join(dir, '..', 'tests', basename(dir), pattern + testExt)
       if (getFile(db, candidate2)) { testFile = candidate2; break }
     }
     if (testFile) break

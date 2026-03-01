@@ -28,9 +28,9 @@ async function openBunSqlite(dbPath: string): Promise<DB> {
     prepare: (sql: string) => {
       const stmt = raw.prepare(sql)
       return {
-        run: (...p: unknown[]) => stmt.run(...p) as { changes: number; lastInsertRowid: number | bigint },
-        get: (...p: unknown[]) => stmt.get(...p),
-        all: (...p: unknown[]) => stmt.all(...p),
+        run: (...p: unknown[]) => stmt.run(...p as []) as { changes: number; lastInsertRowid: number | bigint },
+        get: (...p: unknown[]) => stmt.get(...p as []),
+        all: (...p: unknown[]) => stmt.all(...p as []),
       }
     },
     close: () => raw.close(),

@@ -1,5 +1,5 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs'
-import { join, relative, resolve, extname } from 'node:path'
+import { join, relative, resolve } from 'node:path'
 import { createHash } from 'node:crypto'
 import type { DB } from '../store/db.js'
 import { isSupportedFile, parseFile, initParser, getLanguageName } from './parser.js'
@@ -17,12 +17,33 @@ import { type Config, SUPPORTED_LANGUAGES } from '../config.js'
 const IGNORED_DIRS = new Set([
   'node_modules', '.git', 'dist', 'build', 'coverage',
   '.context-bunker', '.next', '.nuxt', '.svelte-kit', 'out',
+  // Python
+  '__pycache__', 'venv', 'env', '.venv', '.mypy_cache', '.pytest_cache',
+  '.ruff_cache', '.tox',
+  // Go
+  'vendor',
 ])
 
-const IGNORED_EXTENSIONS = new Set(['.d.ts'])
+const IGNORED_SUFFIXES = ['.d.ts', '.d.mts', '.d.cts']
 
 function hashContent(content: string): string {
   return createHash('sha256').update(content).digest('hex').slice(0, 16)
+}
+
+// Simple glob matcher for include/exclude patterns
+// Supports: * (any within segment), ** (any depth), ? (single char)
+function matchGlob(pattern: string, path: string): boolean {
+  const regex = pattern
+    .replace(/\./g, '\\.')
+    .replace(/\*\*/g, '{{GLOBSTAR}}')
+    .replace(/\*/g, '[^/]*')
+    .replace(/\?/g, '[^/]')
+    .replace(/\{\{GLOBSTAR\}\}/g, '.*')
+  return new RegExp(`^${regex}$`).test(path)
+}
+
+function matchesAny(patterns: string[], path: string): boolean {
+  return patterns.some(p => matchGlob(p, path))
 }
 
 function walkDir(dir: string): string[] {
@@ -35,7 +56,7 @@ function walkDir(dir: string): string[] {
       if (entry.isDirectory()) {
         if (!IGNORED_DIRS.has(entry.name)) files.push(...walkDir(fullPath))
       } else if (entry.isFile()) {
-        if (isSupportedFile(entry.name) && !IGNORED_EXTENSIONS.has(extname(entry.name))) {
+        if (isSupportedFile(entry.name) && !IGNORED_SUFFIXES.some(s => entry.name.endsWith(s))) {
           files.push(fullPath)
         }
       }
@@ -115,7 +136,7 @@ export async function indexFile(db: DB, filePath: string, projectRoot: string, c
   // Insert exports
   for (const exp of result.exports) {
     const originalPath = exp.originalPath
-      ? resolveImportPath(exp.originalPath, resolve(projectRoot, relPath), projectRoot).resolved
+      ? resolveImportPath(exp.originalPath, resolve(projectRoot, relPath), projectRoot, lang).resolved
       : undefined
     insertExport(db, fid, exp.symbol, exp.kind, exp.isReexport, originalPath)
   }
@@ -150,11 +171,28 @@ export async function indexProject(db: DB, projectRoot: string, log?: (...args: 
   const allFiles = walkDir(projectRoot)
   // Filter by configured languages
   const allowedLangs = config?.languages ? new Set(config.languages) : SUPPORTED_LANGUAGES
-  const filteredFiles = allFiles.filter(f => {
+  let filteredFiles = allFiles.filter(f => {
     const lang = getLanguageName(f)
     return !lang || allowedLangs.has(lang)
   })
-  log?.(`Found ${filteredFiles.length} files to index (${allFiles.length - filteredFiles.length} filtered by language config)`)
+
+  // Apply include filter (file must be under at least one include prefix)
+  if (config?.include && config.include.length > 0) {
+    filteredFiles = filteredFiles.filter(f => {
+      const relPath = relative(projectRoot, f).replace(/\\/g, '/')
+      return config.include.some(prefix => relPath.startsWith(prefix))
+    })
+  }
+
+  // Apply exclude filter (file must not match any exclude pattern)
+  if (config?.exclude && config.exclude.length > 0) {
+    filteredFiles = filteredFiles.filter(f => {
+      const relPath = relative(projectRoot, f).replace(/\\/g, '/')
+      return !matchesAny(config.exclude, relPath)
+    })
+  }
+
+  log?.(`Found ${filteredFiles.length} files to index (${allFiles.length - filteredFiles.length} filtered by config)`)
 
   let indexed = 0, skipped = 0, errors = 0
 

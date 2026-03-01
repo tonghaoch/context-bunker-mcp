@@ -1,6 +1,5 @@
 import type { DB } from '../store/db.js'
 import { findSymbolsByName, getCallsBySymbol } from '../store/queries.js'
-import { getFileById } from '../store/queries.js'
 
 interface CallNode {
   name: string

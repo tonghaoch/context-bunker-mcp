@@ -8,14 +8,14 @@ type Tree = TreeSitter.Tree
 const LANG_MAP: Record<string, string> = {
   '.ts': 'typescript',
   '.tsx': 'tsx',
+  '.mts': 'typescript',
+  '.cts': 'typescript',
   '.js': 'javascript',
   '.jsx': 'javascript',
   '.mjs': 'javascript',
   '.cjs': 'javascript',
   '.py': 'python',
   '.go': 'go',
-  '.rs': 'rust',
-  '.java': 'java',
 }
 
 const SUPPORTED_EXTENSIONS = new Set(Object.keys(LANG_MAP))

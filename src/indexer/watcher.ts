@@ -19,6 +19,26 @@ const IGNORED = [
   '**/.svelte-kit/**',
   '**/out/**',
   '**/*.d.ts',
+  '**/*.d.mts',
+  '**/*.d.cts',
+  // Python
+  '**/__pycache__/**',
+  '**/venv/**',
+  '**/env/**',
+  '**/.venv/**',
+  '**/.mypy_cache/**',
+  '**/.pytest_cache/**',
+  '**/.ruff_cache/**',
+  '**/.tox/**',
+  '**/*.egg-info/**',
+  // Go
+  '**/vendor/**',
+  // General dot-directories (IDE, caches, etc.)
+  '**/.turbo/**',
+  '**/.parcel-cache/**',
+  '**/.cache/**',
+  '**/.idea/**',
+  '**/.vscode/**',
 ]
 
 export function startWatcher(projectRoot: string, callbacks: WatcherCallbacks) {

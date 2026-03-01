@@ -10,12 +10,20 @@ export interface Config {
 
 const CONFIG_FILE = '.context-bunker.json'
 
-export const SUPPORTED_LANGUAGES = new Set(['typescript', 'javascript', 'python', 'go'])
+export const SUPPORTED_LANGUAGES = new Set(['typescript', 'tsx', 'javascript', 'python', 'go'])
 
 const DEFAULT_CONFIG: Config = {
   include: ['src/', 'lib/', 'app/', 'packages/'],
-  exclude: ['**/*.test.ts', '**/*.spec.ts', '**/__tests__/**', '**/__mocks__/**'],
-  languages: ['typescript', 'javascript', 'python', 'go'],
+  exclude: [
+    '**/*.test.ts', '**/*.spec.ts', '**/*.test.tsx', '**/*.spec.tsx',
+    '**/*.test.js', '**/*.spec.js', '**/*.test.jsx', '**/*.spec.jsx',
+    '**/*.test.mts', '**/*.spec.mts',
+    '**/__tests__/**', '**/__mocks__/**',
+    '**/test_*.py',  // Python prefix convention
+    '**/*_test.py',  // Python suffix convention
+    '**/*_test.go',  // Go convention
+  ],
+  languages: ['typescript', 'tsx', 'javascript', 'python', 'go'],
   maxFileSize: 1_048_576, // 1MB
 }
 

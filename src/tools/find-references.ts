@@ -1,7 +1,7 @@
 import type { DB } from '../store/db.js'
 import { getImportersOf, getCallersOf, findSymbolsByName } from '../store/queries.js'
 
-export function findReferences(db: DB, symbol: string, file?: string) {
+export function findReferences(db: DB, symbol: string, _file?: string) {
   const refs: { file: string; line: number; kind: string }[] = []
 
   // Find symbols matching the name to get their file paths
