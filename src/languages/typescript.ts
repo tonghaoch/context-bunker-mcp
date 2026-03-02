@@ -36,6 +36,7 @@ export interface ExtractionResult {
   imports: ExtractedImport[]
   exports: ExtractedExport[]
   calls: ExtractedCall[]
+  refs: string[]
 }
 
 // ── Helpers ──
@@ -278,6 +279,44 @@ function extractCalls(node: SyntaxNode, parentSymbol?: string): ExtractedCall[] 
   return calls
 }
 
+// ── Identifier reference extraction ──
+
+/** Node types where the identifier child is a DEFINITION (not a reference) */
+const DEFINITION_PARENTS = new Set([
+  'function_declaration', 'class_declaration', 'interface_declaration',
+  'type_alias_declaration', 'enum_declaration', 'method_definition',
+  'import_specifier', 'export_specifier', 'namespace_import',
+])
+
+function extractRefs(root: SyntaxNode): string[] {
+  const refs = new Set<string>()
+  function walk(node: SyntaxNode) {
+    if (node.type === 'identifier' || node.type === 'type_identifier') {
+      const parent = node.parent
+      if (parent) {
+        // Skip if this identifier IS the name being defined
+        if (DEFINITION_PARENTS.has(parent.type)) {
+          // definition name — skip
+        } else if (parent.type === 'variable_declarator') {
+          // First identifier child is the variable name (definition), rest are references
+          const nameNode = findChild(parent, 'identifier')
+          if (nameNode && nameNode.startIndex === node.startIndex) { /* definition name — skip */ }
+          else refs.add(node.text)
+        } else if (parent.type === 'formal_parameters' || parent.type === 'required_parameter' || parent.type === 'optional_parameter') {
+          // Parameter names are definitions — skip
+        } else {
+          refs.add(node.text)
+        }
+      }
+    }
+    for (let i = 0; i < node.childCount; i++) {
+      walk(node.child(i)!)
+    }
+  }
+  walk(root)
+  return [...refs]
+}
+
 // ── Main entry ──
 
 export function extractTypeScript(root: SyntaxNode): ExtractionResult {
@@ -354,5 +393,8 @@ export function extractTypeScript(root: SyntaxNode): ExtractionResult {
   // Extract call expressions from the entire tree
   const calls = extractCalls(root)
 
-  return { symbols, imports, exports, calls }
+  // Extract all identifier references (for unused code detection)
+  const refs = extractRefs(root)
+
+  return { symbols, imports, exports, calls, refs }
 }

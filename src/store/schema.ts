@@ -1,9 +1,19 @@
-export const SCHEMA_VERSION = 1
+export const SCHEMA_VERSION = 2
 
 // Each migration runs when stored version < migration.version
 // Add new migrations at the end with incrementing version numbers
 export const MIGRATIONS: { version: number; sql: string }[] = [
-  // Example: { version: 2, sql: 'ALTER TABLE symbols ADD COLUMN namespace TEXT;' }
+  {
+    version: 2,
+    sql: `
+      CREATE TABLE IF NOT EXISTS refs (
+        file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+        name TEXT NOT NULL
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_refs_file_name ON refs(file_id, name);
+      CREATE INDEX IF NOT EXISTS idx_refs_name ON refs(name);
+    `,
+  },
 ]
 
 export const CREATE_TABLES = `
@@ -86,6 +96,13 @@ CREATE INDEX IF NOT EXISTS idx_imports_file ON imports(file_id);
 CREATE INDEX IF NOT EXISTS idx_imports_from ON imports(from_path);
 CREATE INDEX IF NOT EXISTS idx_exports_file ON exports(file_id);
 CREATE INDEX IF NOT EXISTS idx_exports_symbol ON exports(symbol);
+CREATE TABLE IF NOT EXISTS refs (
+  file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+  name TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_calls_caller ON calls(caller_symbol_id);
 CREATE INDEX IF NOT EXISTS idx_calls_callee ON calls(callee_name);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_refs_file_name ON refs(file_id, name);
+CREATE INDEX IF NOT EXISTS idx_refs_name ON refs(name);
 `

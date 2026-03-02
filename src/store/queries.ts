@@ -171,6 +171,15 @@ export function deleteCallsByFile(db: DB, fileId: number) {
   db.prepare('DELETE FROM calls WHERE file_id = ?').run(fileId)
 }
 
+// Refs (identifier references per file)
+export function insertRef(db: DB, fileId: number, name: string) {
+  db.prepare('INSERT OR IGNORE INTO refs (file_id, name) VALUES (?, ?)').run(fileId, name)
+}
+
+export function deleteRefsByFile(db: DB, fileId: number) {
+  db.prepare('DELETE FROM refs WHERE file_id = ?').run(fileId)
+}
+
 // Sessions
 export function getLastSession(db: DB) {
   return db.prepare('SELECT * FROM sessions ORDER BY id DESC LIMIT 1').get() as SessionRow | undefined

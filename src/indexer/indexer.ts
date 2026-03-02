@@ -9,7 +9,7 @@ import { updateFileTFIDF, recomputeIDF } from './tfidf.js'
 import {
   upsertFile, getFile, deleteFile, getAllFiles,
   deleteSymbolsByFile, deleteImportsByFile, deleteExportsByFile, deleteCallsByFile,
-  insertSymbol, insertImport, insertExport, insertCall,
+  deleteRefsByFile, insertSymbol, insertImport, insertExport, insertCall, insertRef,
   getSymbolByNameAndFile,
 } from '../store/queries.js'
 import { type Config, SUPPORTED_LANGUAGES } from '../config.js'
@@ -134,6 +134,7 @@ export async function indexFile(db: DB, filePath: string, projectRoot: string, c
     deleteImportsByFile(db, fid)
     deleteExportsByFile(db, fid)
     deleteCallsByFile(db, fid)
+    deleteRefsByFile(db, fid)
 
     // Insert symbols
     for (const sym of result.symbols) {
@@ -165,6 +166,11 @@ export async function indexFile(db: DB, filePath: string, projectRoot: string, c
       if (callerSymbolId > 0) {
         insertCall(db, callerSymbolId, call.calleeName, fid, call.line)
       }
+    }
+
+    // Insert identifier references
+    for (const name of result.refs) {
+      insertRef(db, fid, name)
     }
 
     // Update TF-IDF

@@ -1,5 +1,6 @@
 import type { SyntaxNode } from '../indexer/parser.js'
 import type { ExtractionResult, ExtractedSymbol, ExtractedImport, ExtractedExport, ExtractedCall } from './typescript.js'
+import { extractRefsGeneric } from '../indexer/extractor.js'
 
 // ── Helpers ──
 
@@ -341,5 +342,9 @@ export function extractRust(root: SyntaxNode): ExtractionResult {
   }
 
   const calls = extractCalls(root)
-  return { symbols, imports, exports, calls }
+  const refs = extractRefsGeneric(root, new Set([
+    'function_item', 'struct_item', 'enum_item', 'trait_item', 'type_item',
+    'impl_item', 'parameter', 'let_declaration', 'use_declaration',
+  ]), ['identifier', 'type_identifier'])
+  return { symbols, imports, exports, calls, refs }
 }

@@ -1,5 +1,6 @@
 import type { SyntaxNode } from '../indexer/parser.js'
 import type { ExtractionResult, ExtractedSymbol, ExtractedImport, ExtractedExport, ExtractedCall } from './typescript.js'
+import { extractRefsGeneric } from '../indexer/extractor.js'
 
 // ── Helpers ──
 
@@ -310,5 +311,10 @@ export function extractJava(root: SyntaxNode): ExtractionResult {
   }
 
   const calls = extractCalls(root)
-  return { symbols, imports, exports, calls }
+  const refs = extractRefsGeneric(root, new Set([
+    'class_declaration', 'interface_declaration', 'enum_declaration',
+    'method_declaration', 'constructor_declaration', 'formal_parameter',
+    'local_variable_declaration', 'import_declaration',
+  ]), ['identifier', 'type_identifier'])
+  return { symbols, imports, exports, calls, refs }
 }

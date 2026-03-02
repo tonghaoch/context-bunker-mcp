@@ -1,4 +1,4 @@
-import type { Tree } from './parser.js'
+import type { Tree, SyntaxNode } from './parser.js'
 import { getLanguageName } from './parser.js'
 import { extractTypeScript } from '../languages/typescript.js'
 import { extractJavaScript } from '../languages/javascript.js'
@@ -10,6 +10,21 @@ import { extractCSharp } from '../languages/csharp.js'
 import type { ExtractionResult } from '../languages/typescript.js'
 
 export type { ExtractionResult, ExtractedSymbol, ExtractedImport, ExtractedExport, ExtractedCall } from '../languages/typescript.js'
+
+/** Generic identifier reference extraction — works for all languages.
+ *  Collects all identifier/type_identifier nodes except definition names. */
+export function extractRefsGeneric(root: SyntaxNode, defParents: Set<string>, idTypes = ['identifier', 'type_identifier']): string[] {
+  const refs = new Set<string>()
+  const idSet = new Set(idTypes)
+  function walk(node: SyntaxNode) {
+    if (idSet.has(node.type) && node.parent && !defParents.has(node.parent.type)) {
+      refs.add(node.text)
+    }
+    for (let i = 0; i < node.childCount; i++) walk(node.child(i)!)
+  }
+  walk(root)
+  return [...refs]
+}
 
 const extractors: Record<string, (root: any) => ExtractionResult> = {
   typescript: extractTypeScript,

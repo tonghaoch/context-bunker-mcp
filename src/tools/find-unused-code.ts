@@ -2,6 +2,8 @@ import type { DB } from '../store/db.js'
 
 export function findUnusedCode(db: DB, scope?: string, kind?: string) {
   // Find internal (non-exported) symbols that are never referenced anywhere.
+  // Uses the refs table which tracks all identifier references (variable reads,
+  // type annotations, callbacks, etc.) — not just function calls.
   // Exported unused symbols are handled by find_unused_exports.
   // Test files are excluded from indexing by default, so test-only
   // references don't save a symbol from being flagged.
@@ -11,7 +13,7 @@ export function findUnusedCode(db: DB, scope?: string, kind?: string) {
     JOIN files f ON s.file_id = f.id
     WHERE s.is_exported = 0
       AND NOT EXISTS (
-        SELECT 1 FROM calls c WHERE c.callee_name = s.name
+        SELECT 1 FROM refs r WHERE r.name = s.name
       )
       AND NOT EXISTS (
         SELECT 1 FROM imports i WHERE i.symbol = s.name AND i.from_path = f.path AND i.is_external = 0
