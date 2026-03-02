@@ -70,9 +70,9 @@ export function getAllFiles(db: DB) {
 export function upsertFile(db: DB, path: string, hash: string, mtime: number, lines: number): number {
   const row = db.prepare(
     `INSERT INTO files (path, hash, mtime, lines, indexed_at) VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT(path) DO UPDATE SET hash=?, mtime=?, lines=?, indexed_at=?
+     ON CONFLICT(path) DO UPDATE SET hash=excluded.hash, mtime=excluded.mtime, lines=excluded.lines, indexed_at=excluded.indexed_at
      RETURNING id`
-  ).get(path, hash, mtime, lines, Date.now(), hash, mtime, lines, Date.now()) as { id: number }
+  ).get(path, hash, mtime, lines, Date.now()) as { id: number }
   return row.id
 }
 
@@ -129,6 +129,14 @@ export function getImportersOf(db: DB, fromPath: string) {
   ).all(fromPath) as (ImportRow & { file_path: string })[]
 }
 
+export function getImportersOfMany(db: DB, fromPaths: string[]) {
+  if (fromPaths.length === 0) return []
+  const placeholders = fromPaths.map(() => '?').join(',')
+  return db.prepare(
+    `SELECT i.*, f.path as file_path FROM imports i JOIN files f ON i.file_id = f.id WHERE i.from_path IN (${placeholders}) LIMIT 500`
+  ).all(...fromPaths) as (ImportRow & { file_path: string })[]
+}
+
 export function insertImport(db: DB, fileId: number, symbol: string, fromPath: string, isTypeOnly: boolean, isExternal: boolean) {
   db.prepare(
     'INSERT INTO imports (file_id, symbol, from_path, is_type_only, is_external) VALUES (?, ?, ?, ?, ?)'
@@ -167,6 +175,16 @@ export function getCallersOf(db: DB, calleeName: string) {
   ).all(calleeName) as (CallRow & { caller_name: string; caller_kind: string; file_path: string })[]
 }
 
+export function getCallersOfMany(db: DB, calleeNames: string[]) {
+  if (calleeNames.length === 0) return []
+  const placeholders = calleeNames.map(() => '?').join(',')
+  return db.prepare(
+    `SELECT c.*, s.name as caller_name, s.kind as caller_kind, f.path as file_path
+     FROM calls c JOIN symbols s ON c.caller_symbol_id = s.id JOIN files f ON c.file_id = f.id
+     WHERE c.callee_name IN (${placeholders}) LIMIT 500`
+  ).all(...calleeNames) as (CallRow & { caller_name: string; caller_kind: string; file_path: string })[]
+}
+
 export function insertCall(db: DB, callerSymbolId: number, calleeName: string, fileId: number, line: number) {
   db.prepare(
     'INSERT INTO calls (caller_symbol_id, callee_name, file_id, line) VALUES (?, ?, ?, ?)'
@@ -202,10 +220,13 @@ export function endSession(db: DB, sessionId: number, snapshot: Record<string, u
 
 // Stats
 export function getStats(db: DB) {
-  const files = (db.prepare('SELECT COUNT(*) as count FROM files').get() as { count: number }).count
-  const symbols = (db.prepare('SELECT COUNT(*) as count FROM symbols').get() as { count: number }).count
-  const imports = (db.prepare('SELECT COUNT(*) as count FROM imports').get() as { count: number }).count
-  const exports = (db.prepare('SELECT COUNT(*) as count FROM exports').get() as { count: number }).count
-  const calls = (db.prepare('SELECT COUNT(*) as count FROM calls').get() as { count: number }).count
-  return { files, symbols, imports, exports, calls }
+  const row = db.prepare(
+    `SELECT
+      (SELECT COUNT(*) FROM files) as files,
+      (SELECT COUNT(*) FROM symbols) as symbols,
+      (SELECT COUNT(*) FROM imports) as imports,
+      (SELECT COUNT(*) FROM exports) as exports,
+      (SELECT COUNT(*) FROM calls) as calls`
+  ).get() as { files: number; symbols: number; imports: number; exports: number; calls: number }
+  return row
 }

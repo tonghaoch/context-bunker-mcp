@@ -80,15 +80,12 @@ export function recomputeIDF(db: DB) {
   const run = db.transaction(() => {
     db.prepare('DELETE FROM idf').run()
 
-    // For each term: IDF = log(totalFiles / docFreq)
-    const termCounts = db.prepare(
-      'SELECT term, COUNT(DISTINCT file_id) as df FROM tfidf GROUP BY term'
-    ).all() as { term: string; df: number }[]
-
-    const insert = db.prepare('INSERT INTO idf (term, idf) VALUES (?, ?)')
-    for (const { term, df } of termCounts) {
-      insert.run(term, Math.log(totalFiles / df))
-    }
+    // Compute and insert IDF entirely in SQL — no JS round-trip for term data
+    db.prepare(
+      `INSERT INTO idf (term, idf)
+       SELECT term, ln(? * 1.0 / COUNT(DISTINCT file_id))
+       FROM tfidf GROUP BY term`
+    ).run(totalFiles)
   })
   run()
 }

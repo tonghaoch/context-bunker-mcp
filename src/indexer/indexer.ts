@@ -7,7 +7,7 @@ import { resolveImportPath, enableResolveCache, disableResolveCache } from './re
 import { updateFileTFIDF, recomputeIDF } from './tfidf.js'
 import {
   upsertFile, getFile, deleteFile, getAllFiles,
-  deleteSymbolsByFile, deleteImportsByFile, deleteExportsByFile, deleteCallsByFile,
+  deleteSymbolsByFile, deleteImportsByFile, deleteExportsByFile,
   deleteRefsByFile, insertSymbol, insertImport, insertExport, insertCall, insertRef,
   getSymbolByNameAndFile,
 } from '../store/queries.js'
@@ -157,10 +157,10 @@ export async function indexFile(db: DB, filePath: string, projectRoot: string, c
     const fid = upsertFile(db, relPath, hash, mtime, lines)
 
     // Clear old data for this file
+    // Note: deleteSymbolsByFile cascades to delete calls (via calls.caller_symbol_id FK)
     deleteSymbolsByFile(db, fid)
     deleteImportsByFile(db, fid)
     deleteExportsByFile(db, fid)
-    deleteCallsByFile(db, fid)
     deleteRefsByFile(db, fid)
 
     // Insert symbols
@@ -288,11 +288,14 @@ export async function indexProject(db: DB, projectRoot: string, log?: (...args: 
   )
   const dbFiles = getAllFiles(db)
   let removed = 0
-  for (const f of dbFiles) {
-    if (!walkedPaths.has(f.path)) {
+  const toRemove = dbFiles.filter(f => !walkedPaths.has(f.path))
+  if (toRemove.length > 0) {
+    db.exec('BEGIN')
+    for (const f of toRemove) {
       deleteFile(db, f.path)
       removed++
     }
+    db.exec('COMMIT')
   }
 
   // Recompute IDF after batch

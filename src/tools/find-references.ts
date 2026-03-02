@@ -1,5 +1,5 @@
 import type { DB } from '../store/db.js'
-import { getImportersOf, getCallersOf, findSymbolsByName } from '../store/queries.js'
+import { getImportersOfMany, getCallersOfMany, findSymbolsByName } from '../store/queries.js'
 
 export function findReferences(db: DB, symbol: string, file?: string) {
   const refs: { file: string; line: number; kind: string }[] = []
@@ -9,27 +9,19 @@ export function findReferences(db: DB, symbol: string, file?: string) {
   if (file) {
     syms = syms.filter(s => s.file_path === file)
   }
-  const defFiles = new Set(syms.map(s => s.file_path))
+  const defFiles = [...new Set(syms.map(s => s.file_path))]
 
-  // Find import references — files that import this symbol
-  for (const defFile of defFiles) {
-    const importers = getImportersOf(db, defFile)
-    for (const imp of importers) {
-      if (imp.symbol === symbol || imp.symbol === `* as ${symbol}`) {
-        refs.push({ file: imp.file_path, line: 0, kind: imp.is_type_only ? 'type_import' : 'import' })
-      }
+  // Find import references — files that import this symbol (batched)
+  const importers = getImportersOfMany(db, defFiles)
+  for (const imp of importers) {
+    if (imp.symbol === symbol || imp.symbol === `* as ${symbol}`) {
+      refs.push({ file: imp.file_path, line: 0, kind: imp.is_type_only ? 'type_import' : 'import' })
     }
   }
 
-  // Find call references — functions that call this symbol
-  const callers = getCallersOf(db, symbol)
+  // Find call references — functions that call this symbol (batched: direct + member calls)
+  const callers = getCallersOfMany(db, [symbol, `this.${symbol}`])
   for (const c of callers) {
-    refs.push({ file: c.file_path, line: c.line, kind: 'call' })
-  }
-
-  // Also check member_expression calls like `this.method` or `obj.method`
-  const memberCallers = getCallersOf(db, `this.${symbol}`)
-  for (const c of memberCallers) {
     refs.push({ file: c.file_path, line: c.line, kind: 'call' })
   }
 

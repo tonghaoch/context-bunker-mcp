@@ -87,6 +87,8 @@ CREATE TABLE IF NOT EXISTS refs (
 
 CREATE INDEX IF NOT EXISTS idx_calls_caller ON calls(caller_symbol_id);
 CREATE INDEX IF NOT EXISTS idx_calls_callee ON calls(callee_name);
+CREATE INDEX IF NOT EXISTS idx_calls_file ON calls(file_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_refs_file_name ON refs(file_id, name);
 CREATE INDEX IF NOT EXISTS idx_refs_name ON refs(name);
+CREATE INDEX IF NOT EXISTS idx_exports_original_path ON exports(original_path);
 `
