@@ -52,31 +52,37 @@ function cleanOldLogs(logDir: string, maxAgeDays: number) {
 
 export function createLogger(verbose: boolean): Logger {
   const logDir = join(getCacheDir(), 'context-bunker', 'logs')
-  mkdirSync(logDir, { recursive: true })
+  let canWriteFile = true
+  let logPath = ''
 
-  // Session log file with timestamp
-  const now = new Date()
-  const stamp = now.toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 19)
-  const logPath = join(logDir, `session-${stamp}.log`)
+  try {
+    mkdirSync(logDir, { recursive: true })
+    const now = new Date()
+    const stamp = now.toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 19)
+    logPath = join(logDir, `session-${stamp}.log`)
 
-  // Clean logs older than 7 days
-  cleanOldLogs(logDir, 7)
+    cleanOldLogs(logDir, 7)
 
-  // Write session header
-  const header = [
-    `=== context-bunker MCP server ===`,
-    `Session started: ${now.toISOString()}`,
-    `PID: ${process.pid}`,
-    `Node: ${process.version}`,
-    `Platform: ${process.platform} ${process.arch}`,
-    `---`,
-    '',
-  ].join('\n')
-  appendFileSync(logPath, header)
+    const header = [
+      `=== context-bunker MCP server ===`,
+      `Session started: ${now.toISOString()}`,
+      `PID: ${process.pid}`,
+      `Node: ${process.version}`,
+      `Platform: ${process.platform} ${process.arch}`,
+      `---`,
+      '',
+    ].join('\n')
+    appendFileSync(logPath, header)
+  } catch {
+    canWriteFile = false
+    console.error('[context-bunker] WARN: Could not create log file, falling back to stderr only')
+  }
 
   function write(level: string, msg: string) {
     const line = `[${ts()}] [${level}] ${msg}\n`
-    appendFileSync(logPath, line)
+    if (canWriteFile) {
+      try { appendFileSync(logPath, line) } catch { canWriteFile = false }
+    }
   }
 
   const logger: Logger = {

@@ -36,8 +36,12 @@ function getWasmPath(langName: string): string {
 
 export async function initParser(): Promise<void> {
   if (parser) return
-  await TreeSitter.init()
-  parser = new TreeSitter()
+  try {
+    await TreeSitter.init()
+    parser = new TreeSitter()
+  } catch (err) {
+    throw new Error(`Failed to initialize tree-sitter: ${err instanceof Error ? err.message : String(err)}`, { cause: err })
+  }
 }
 
 async function loadLanguage(langName: string): Promise<Language> {
@@ -45,7 +49,12 @@ async function loadLanguage(langName: string): Promise<Language> {
   if (cached) return cached
 
   const wasmPath = getWasmPath(langName)
-  const wasmBuf = readFileSync(wasmPath)
+  let wasmBuf: Buffer
+  try {
+    wasmBuf = readFileSync(wasmPath)
+  } catch (err) {
+    throw new Error(`Failed to load WASM for ${langName} at ${wasmPath}: ${err instanceof Error ? err.message : String(err)}`, { cause: err })
+  }
   const lang = await TreeSitter.Language.load(wasmBuf)
   languageCache.set(langName, lang)
   return lang

@@ -97,36 +97,40 @@ async function main() {
 
   // If project path given, index it upfront
   if (projectArg) {
-    const projectRoot = resolve(projectArg)
-    log('Project root:', projectRoot)
+    try {
+      const projectRoot = resolve(projectArg)
+      log('Project root:', projectRoot)
 
-    const config = loadConfig(projectRoot)
-    const storage = useLocal ? 'local' : config.storage
-    const dbPath = getDbPath(projectRoot, storage)
-    state.db = await openDatabase(dbPath)
-    state.projectRoot = projectRoot
-    state.config = config
+      const config = loadConfig(projectRoot)
+      const storage = useLocal ? 'local' : config.storage
+      const dbPath = getDbPath(projectRoot, storage)
+      state.db = await openDatabase(dbPath)
+      state.projectRoot = projectRoot
+      state.config = config
 
-    log('Indexing project...')
-    const result = await indexProject(state.db, projectRoot, log, config)
-    log(`Index complete: ${result.indexed} indexed, ${result.skipped} unchanged, ${result.removed} removed (${result.timeMs}ms)`)
+      log('Indexing project...')
+      const result = await indexProject(state.db, projectRoot, log, config)
+      log(`Index complete: ${result.indexed} indexed, ${result.skipped} unchanged, ${result.removed} removed (${result.timeMs}ms)`)
 
-    // File watcher
-    if (!noWatch) {
-      const watcher = startWatcher(projectRoot, {
-        onAdd: async (path) => { log('File added:', path); await indexFile(state.db, path, projectRoot, config) },
-        onChange: async (path) => { log('File changed:', path); await indexFile(state.db, path, projectRoot, config) },
-        onUnlink: async (path) => { log('File removed:', path); await removeFile(state.db, path, projectRoot) },
-        onError: (err) => { logger.warn('File watcher error (watching disabled):', err.message); state.stopWatcher = undefined },
-      })
-      state.stopWatcher = () => watcher.close()
-      log('File watcher started')
+      // File watcher
+      if (!noWatch) {
+        const watcher = startWatcher(projectRoot, {
+          onAdd: async (path) => { log('File added:', path); await indexFile(state.db, path, projectRoot, config) },
+          onChange: async (path) => { log('File changed:', path); await indexFile(state.db, path, projectRoot, config) },
+          onUnlink: async (path) => { log('File removed:', path); await removeFile(state.db, path, projectRoot) },
+          onError: (err) => { logger.warn('File watcher error (watching disabled):', err.message); state.stopWatcher = undefined },
+        })
+        state.stopWatcher = () => watcher.close()
+        log('File watcher started')
+      }
+
+      // Session tracking
+      const sr = startSession(state.db)
+      state.sessionId = Number(sr.lastInsertRowid)
+      log('Session started:', state.sessionId)
+    } catch (err) {
+      logger.error('Failed to initialize project (server will continue without project):', err)
     }
-
-    // Session tracking
-    const sr = startSession(state.db)
-    state.sessionId = Number(sr.lastInsertRowid)
-    log('Session started:', state.sessionId)
   } else {
     log('No project specified. AI can call set_project(path) to select a project.')
   }

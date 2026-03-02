@@ -52,21 +52,23 @@ export function startWatcher(projectRoot: string, callbacks: WatcherCallbacks) {
     awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 50 },
   })
 
+  const handleError = (e: unknown) => {
+    callbacks.onError?.(e instanceof Error ? e : new Error(String(e)))
+  }
+
   watcher.on('add', (path) => {
-    if (isSupportedFile(path)) callbacks.onAdd(path)
+    if (isSupportedFile(path)) Promise.resolve(callbacks.onAdd(path)).catch(handleError)
   })
 
   watcher.on('change', (path) => {
-    if (isSupportedFile(path)) callbacks.onChange(path)
+    if (isSupportedFile(path)) Promise.resolve(callbacks.onChange(path)).catch(handleError)
   })
 
   watcher.on('unlink', (path) => {
-    if (isSupportedFile(path)) callbacks.onUnlink(path)
+    if (isSupportedFile(path)) Promise.resolve(callbacks.onUnlink(path)).catch(handleError)
   })
 
-  watcher.on('error', (err: unknown) => {
-    callbacks.onError?.(err instanceof Error ? err : new Error(String(err)))
-  })
+  watcher.on('error', handleError)
 
   return {
     close: () => watcher.close(),
