@@ -119,7 +119,7 @@ export function getImportsByFile(db: DB, fileId: number) {
 
 export function getImportersOf(db: DB, fromPath: string) {
   return db.prepare(
-    'SELECT i.*, f.path as file_path FROM imports i JOIN files f ON i.file_id = f.id WHERE i.from_path = ?'
+    'SELECT i.*, f.path as file_path FROM imports i JOIN files f ON i.file_id = f.id WHERE i.from_path = ? LIMIT 500'
   ).all(fromPath) as (ImportRow & { file_path: string })[]
 }
 
@@ -157,7 +157,7 @@ export function getCallersOf(db: DB, calleeName: string) {
   return db.prepare(
     `SELECT c.*, s.name as caller_name, s.kind as caller_kind, f.path as file_path
      FROM calls c JOIN symbols s ON c.caller_symbol_id = s.id JOIN files f ON c.file_id = f.id
-     WHERE c.callee_name = ?`
+     WHERE c.callee_name = ? LIMIT 500`
   ).all(calleeName) as (CallRow & { caller_name: string; caller_kind: string; file_path: string })[]
 }
 

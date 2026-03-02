@@ -16,6 +16,24 @@ interface Statement {
   all(...params: unknown[]): unknown[]
 }
 
+/** Wrap a DB to cache prepared statements — avoids re-compiling SQL on every call */
+function withStatementCache(db: DB): DB {
+  const cache = new Map<string, Statement>()
+  return {
+    exec: (sql) => db.exec(sql),
+    prepare: (sql) => {
+      let stmt = cache.get(sql)
+      if (!stmt) {
+        stmt = db.prepare(sql)
+        cache.set(sql, stmt)
+      }
+      return stmt
+    },
+    close: () => { cache.clear(); db.close() },
+    transaction: (fn) => db.transaction(fn),
+  }
+}
+
 const isBun = typeof globalThis.Bun !== 'undefined'
 
 async function openBunSqlite(dbPath: string): Promise<DB> {
@@ -99,5 +117,5 @@ export async function openDatabase(dbPath: string): Promise<DB> {
     console.error(`[context-bunker] Warning: DB schema version (${stored}) is newer than code (${SCHEMA_VERSION}). Continuing anyway.`)
   }
 
-  return db
+  return withStatementCache(db)
 }
