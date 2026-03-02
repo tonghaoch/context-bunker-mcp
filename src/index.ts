@@ -94,6 +94,10 @@ process.on('unhandledRejection', (reason) => {
   logger.fatal('unhandledRejection', reason, { pid: process.pid })
   process.exit(1)
 })
+process.on('exit', (code) => {
+  logger.info(`Process exiting with code ${code}`)
+  logger.flush()
+})
 
 // ── Main: MCP Server ──
 async function main() {
@@ -162,6 +166,12 @@ async function main() {
     log('MCP transport closed')
     shutdown()
   }
+
+  // Detect client disconnect — StdioServerTransport doesn't listen for stdin close
+  process.stdin.on('close', () => {
+    log('stdin closed (client disconnected)')
+    shutdown()
+  })
 
   // Graceful shutdown
   async function shutdown() {
