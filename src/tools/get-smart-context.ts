@@ -1,8 +1,8 @@
 import { basename, dirname, join } from 'node:path'
 import type { DB } from '../store/db.js'
 import {
-  getFile, getSymbolsByFile, getImportsByFile, getExportsByFile,
-  getImportersOf, findSymbolsByName,
+  getFile, getSymbolsByFile, getExportsByFile,
+  getImportersOf,
 } from '../store/queries.js'
 import { normalizePath } from '../utils/paths.js'
 
@@ -12,12 +12,23 @@ export function getSmartContext(db: DB, filePath: string) {
   if (!file) return `File not found in index: ${filePath}\nTry running reindex first.`
 
   const symbols = getSymbolsByFile(db, file.id)
-  const imports = getImportsByFile(db, file.id)
   const exports = getExportsByFile(db, file.id)
+
+  // Batch: get all imports with resolved signatures in one query
+  const imports = db.prepare(`
+    SELECT i.symbol, i.from_path, i.is_type_only, i.is_external,
+           s.signature, s.kind as resolved_kind
+    FROM imports i
+    LEFT JOIN files f ON f.path = i.from_path
+    LEFT JOIN symbols s ON s.file_id = f.id AND s.name = i.symbol
+    WHERE i.file_id = ?
+  `).all(file.id) as {
+    symbol: string; from_path: string; is_type_only: number; is_external: number
+    signature: string | null; resolved_kind: string | null
+  }[]
 
   // Imported-by: files that import from this file
   const importedBy = getImportersOf(db, filePath)
-  // Deduplicate by file
   const importerFiles = new Map<string, string[]>()
   for (const imp of importedBy) {
     const existing = importerFiles.get(imp.file_path) ?? []
@@ -25,74 +36,48 @@ export function getSmartContext(db: DB, filePath: string) {
     importerFiles.set(imp.file_path, existing)
   }
 
-  // Resolve imported symbol signatures (for non-external imports)
+  // Format import details
   const importDetails = imports.map(imp => {
-    let sig = ''
-    if (!imp.is_external) {
-      const matchedSyms = findSymbolsByName(db, imp.symbol)
-      const match = matchedSyms.find(s => s.file_path === imp.from_path)
-      if (match?.signature) sig = ` ${match.signature}`
-    }
+    const sig = imp.signature && !imp.is_external ? ` ${imp.signature}` : ''
     const typePrefix = imp.is_type_only ? 'type ' : ''
     const extTag = imp.is_external ? ' (external)' : ''
     return `  ${typePrefix}${imp.symbol}${sig} from '${imp.from_path}'${extTag}`
   })
 
-  // Find test file
+  // Find test file — build candidates, batch check with single query
   const name = basename(filePath).replace(/\.(ts|tsx|js|jsx|mjs|cjs|mts|cts|py|go|rs)$/, '')
   const dir = dirname(filePath)
   const ext = filePath.match(/\.(ts|tsx|js|jsx|mjs|cjs|mts|cts|py|go|rs)$/)?.[0] ?? ''
 
-  // Build test patterns based on file extension
-  const testPatterns: { pattern: string; extensions: string[] }[] = []
-
+  const candidates: string[] = []
   if (ext === '.py') {
-    // Python conventions: test_foo.py, foo_test.py, tests/foo.py
-    testPatterns.push(
-      { pattern: `test_${name}`, extensions: ['.py'] },
-      { pattern: `${name}_test`, extensions: ['.py'] },
-      { pattern: `tests/${name}`, extensions: ['.py'] },
-      { pattern: `test/${name}`, extensions: ['.py'] },
-    )
+    for (const p of [`test_${name}.py`, `${name}_test.py`, `tests/${name}.py`, `test/${name}.py`]) {
+      candidates.push(normalizePath(join(dir, p)))
+    }
   } else if (ext === '.go') {
-    // Go convention: foo_test.go
-    testPatterns.push(
-      { pattern: `${name}_test`, extensions: ['.go'] },
-    )
+    candidates.push(normalizePath(join(dir, `${name}_test.go`)))
   } else if (ext === '.rs') {
-    // Rust conventions: tests/foo.rs, foo_test.rs
-    testPatterns.push(
-      { pattern: `tests/${name}`, extensions: ['.rs'] },
-      { pattern: `${name}_test`, extensions: ['.rs'] },
-    )
+    for (const p of [`tests/${name}.rs`, `${name}_test.rs`]) {
+      candidates.push(normalizePath(join(dir, p)))
+    }
   } else {
-    // TypeScript/JavaScript conventions
-    testPatterns.push(
-      { pattern: `${name}.test`, extensions: ['.ts', '.tsx', '.js', '.jsx', '.mts'] },
-      { pattern: `${name}.spec`, extensions: ['.ts', '.tsx', '.js', '.jsx', '.mts'] },
-      { pattern: `${name}_test`, extensions: ['.ts', '.tsx', '.js', '.jsx', '.mts'] },
-      { pattern: `__tests__/${name}`, extensions: ['.ts', '.tsx', '.js', '.jsx'] },
-      { pattern: `test/${name}`, extensions: ['.ts', '.tsx', '.js', '.jsx'] },
-    )
+    for (const testExt of ['.ts', '.tsx', '.js', '.jsx', '.mts']) {
+      for (const pat of [`${name}.test`, `${name}.spec`, `__tests__/${name}`]) {
+        candidates.push(normalizePath(join(dir, pat + testExt)))
+      }
+    }
   }
 
+  // Single query to check all test file candidates
   let testFile: string | null = null
-  for (const { pattern, extensions } of testPatterns) {
-    for (const testExt of extensions) {
-      const candidate = normalizePath(join(dir, pattern + testExt))
-      if (getFile(db, candidate)) { testFile = candidate; break }
-      // Also check tests/ subdirectory
-      const candidate2 = normalizePath(join(dir, '..', 'tests', basename(dir), pattern + testExt))
-      if (getFile(db, candidate2)) { testFile = candidate2; break }
-    }
-    if (testFile) break
+  if (candidates.length > 0) {
+    const placeholders = candidates.map(() => '?').join(',')
+    const found = db.prepare(`SELECT path FROM files WHERE path IN (${placeholders}) LIMIT 1`).get(...candidates) as { path: string } | undefined
+    testFile = found?.path ?? null
   }
 
   // Build output
-  const lines: string[] = [
-    `${filePath} (${file.lines} lines)`,
-    '',
-  ]
+  const lines: string[] = [`${filePath} (${file.lines} lines)`, '']
 
   if (exports.length > 0) {
     lines.push('Exports:')
@@ -124,7 +109,6 @@ export function getSmartContext(db: DB, filePath: string) {
     lines.push('')
   }
 
-  // Internal dependencies (non-external import sources)
   const deps = [...new Set(imports.filter(i => !i.is_external).map(i => i.from_path))]
   if (deps.length > 0) {
     lines.push('Dependencies:')

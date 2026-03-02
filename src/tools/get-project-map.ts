@@ -1,5 +1,4 @@
 import type { DB } from '../store/db.js'
-import { getAllFiles, getExportsByFile, getSymbolsByFile } from '../store/queries.js'
 
 interface DirEntry {
   files: { path: string; exports: string[] }[]
@@ -7,24 +6,32 @@ interface DirEntry {
 }
 
 export function getProjectMap(db: DB, maxDepth: number = 3) {
-  const files = getAllFiles(db)
-  if (files.length === 0) return 'No files indexed. Run reindex first.'
+  // Single query: fetch all files with their non-reexport exports + signatures
+  const rows = db.prepare(`
+    SELECT f.path, e.symbol, s.signature
+    FROM files f
+    LEFT JOIN exports e ON e.file_id = f.id AND e.is_reexport = 0
+    LEFT JOIN symbols s ON s.file_id = f.id AND s.name = e.symbol
+    ORDER BY f.path
+  `).all() as { path: string; symbol: string | null; signature: string | null }[]
+
+  if (rows.length === 0) return 'No files indexed. Run reindex first.'
+
+  // Group by file path
+  const fileMap = new Map<string, string[]>()
+  for (const row of rows) {
+    if (!fileMap.has(row.path)) fileMap.set(row.path, [])
+    if (row.symbol) {
+      const sig = row.signature ? ` ${row.signature}` : ''
+      fileMap.get(row.path)!.push(`${row.symbol}${sig}`)
+    }
+  }
 
   // Build directory tree
   const root: DirEntry = { files: [], subdirs: new Map() }
 
-  for (const file of files) {
-    const exports = getExportsByFile(db, file.id)
-    const symbols = getSymbolsByFile(db, file.id)
-    const exportNames = exports
-      .filter(e => !e.is_reexport)
-      .map(e => {
-        const sym = symbols.find(s => s.name === e.symbol)
-        const sig = sym?.signature ? sym.signature : ''
-        return `${e.symbol}${sig ? ' ' + sig : ''}`
-      })
-
-    const parts = file.path.replace(/\\/g, '/').split('/')
+  for (const [filePath, exportNames] of fileMap) {
+    const parts = filePath.replace(/\\/g, '/').split('/')
     let current = root
     for (let i = 0; i < parts.length - 1; i++) {
       const dir = parts[i]
@@ -46,7 +53,6 @@ export function getProjectMap(db: DB, maxDepth: number = 3) {
 
     lines.push(`${prefix}${dirName}/ (${fileCount} files, ${exportCount} exports)`)
 
-    // Files in this directory
     for (const file of entry.files) {
       const exps = file.exports.length > 0
         ? ` → ${file.exports.slice(0, 5).join(', ')}${file.exports.length > 5 ? ', ...' : ''}`
@@ -54,7 +60,6 @@ export function getProjectMap(db: DB, maxDepth: number = 3) {
       lines.push(`${prefix}  ${file.path}${exps}`)
     }
 
-    // Subdirectories
     const dirs = [...entry.subdirs.entries()].sort((a, b) => a[0].localeCompare(b[0]))
     for (const [name, sub] of dirs) {
       lines.push(...formatDir(sub, prefix + '  ', name, depth + 1))
@@ -75,12 +80,10 @@ export function getProjectMap(db: DB, maxDepth: number = 3) {
     return n
   }
 
-  // Render from top-level directories
-  const lines: string[] = [`Project map (${files.length} files):\n`]
+  const lines: string[] = [`Project map (${fileMap.size} files):\n`]
   for (const [name, sub] of [...root.subdirs.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
     lines.push(...formatDir(sub, '', name, 1))
   }
-  // Top-level files
   for (const file of root.files) {
     const exps = file.exports.length > 0 ? ` → ${file.exports.join(', ')}` : ''
     lines.push(`${file.path}${exps}`)
