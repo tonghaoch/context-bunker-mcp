@@ -98,6 +98,27 @@ process.on('exit', (code) => {
   logger.info(`Process exiting with code ${code}`)
   logger.flush()
 })
+process.on('beforeExit', (code) => {
+  logger.info(`beforeExit with code ${code} (event loop drained)`)
+  logger.flush()
+})
+
+// Ignore SIGPIPE — Linux default action is to terminate the process silently
+process.on('SIGPIPE', () => {
+  logger.info('Received SIGPIPE (ignored)')
+})
+
+// Catch stdout/stdin errors early
+process.stdout.on('error', (err) => {
+  logger.error('stdout error:', err)
+})
+process.stdin.on('error', (err) => {
+  logger.error('stdin error:', err)
+})
+process.stdin.on('end', () => {
+  logger.info('stdin ended (EOF)')
+  logger.flush()
+})
 
 // ── Main: MCP Server ──
 async function main() {
