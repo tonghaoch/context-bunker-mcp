@@ -1,17 +1,16 @@
 import type { DB } from '../store/db.js'
 
 export function findUnusedCode(db: DB, scope?: string, kind?: string) {
-  // A symbol is unused if it's never referenced from OUTSIDE its own file:
-  // 1. Not called from another file (same-file calls don't count as "used")
-  // 2. Not imported by any other file
-  // 3. Not re-exported by another file
-  // Note: test files are excluded from indexing by default, so test-only
+  // Find internal (non-exported) symbols that are never referenced anywhere.
+  // Exported unused symbols are handled by find_unused_exports.
+  // Test files are excluded from indexing by default, so test-only
   // references don't save a symbol from being flagged.
   let sql = `
-    SELECT s.name, s.kind, f.path, s.start_line, s.end_line, s.is_exported
+    SELECT s.name, s.kind, f.path, s.start_line, s.end_line
     FROM symbols s
     JOIN files f ON s.file_id = f.id
-    WHERE NOT EXISTS (
+    WHERE s.is_exported = 0
+      AND NOT EXISTS (
         SELECT 1 FROM calls c WHERE c.callee_name = s.name
       )
       AND NOT EXISTS (
@@ -28,7 +27,7 @@ export function findUnusedCode(db: DB, scope?: string, kind?: string) {
   sql += ' ORDER BY f.path, s.start_line LIMIT 200'
 
   const rows = db.prepare(sql).all(...params) as {
-    name: string; kind: string; path: string; start_line: number; end_line: number; is_exported: number
+    name: string; kind: string; path: string; start_line: number; end_line: number
   }[]
 
   if (rows.length === 0) {
@@ -48,14 +47,12 @@ export function findUnusedCode(db: DB, scope?: string, kind?: string) {
   for (const [file, symbols] of byFile) {
     lines.push(`${file}:`)
     for (const s of symbols) {
-      const tag = s.is_exported ? ' (exported)' : ''
-      lines.push(`  ${s.kind} ${s.name}${tag}  L${s.start_line}-${s.end_line}`)
+      lines.push(`  ${s.kind} ${s.name}  L${s.start_line}-${s.end_line}`)
     }
     lines.push('')
   }
 
   lines.push('Note: type/interface detection is best-effort — same-file type references are not fully tracked.')
-  lines.push('Symbols marked (exported) are exported but never imported by any other file.')
 
   return lines.join('\n')
 }

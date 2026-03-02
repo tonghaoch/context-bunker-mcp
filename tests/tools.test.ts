@@ -166,11 +166,12 @@ describe('find_unused_code', () => {
     expect(result).not.toContain('verifyPassword')
   })
 
-  it('detects exported symbols never imported by other files', () => {
+  it('does NOT report exported symbols (handled by find_unused_exports)', () => {
     const result = findUnusedCode(db)
-    // unusedHelper is exported but never imported anywhere
-    expect(result).toContain('unusedHelper')
-    expect(result).toContain('(exported)')
+    // unusedHelper is exported — find_unused_exports handles those
+    expect(result).not.toContain('unusedHelper')
+    expect(result).not.toContain('SECRET')
+    expect(result).not.toContain('handleLogin')
   })
 
   it('filters by kind', () => {
