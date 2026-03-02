@@ -5,6 +5,7 @@ interface WatcherCallbacks {
   onAdd(filePath: string): void | Promise<void>
   onChange(filePath: string): void | Promise<void>
   onUnlink(filePath: string): void | Promise<void>
+  onError?(err: Error): void
 }
 
 const IGNORED = [
@@ -61,6 +62,10 @@ export function startWatcher(projectRoot: string, callbacks: WatcherCallbacks) {
 
   watcher.on('unlink', (path) => {
     if (isSupportedFile(path)) callbacks.onUnlink(path)
+  })
+
+  watcher.on('error', (err: unknown) => {
+    callbacks.onError?.(err instanceof Error ? err : new Error(String(err)))
   })
 
   return {

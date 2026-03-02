@@ -115,6 +115,7 @@ export function createServer(state: ServerState) {
         onAdd: async (path) => { await indexFile(state.db, path, absPath, config) },
         onChange: async (path) => { await indexFile(state.db, path, absPath, config) },
         onUnlink: async (path) => { await removeFile(state.db, path, absPath) },
+        onError: (err) => { logger.warn('File watcher error (watching disabled):', err.message); state.stopWatcher = undefined },
       })
       state.stopWatcher = () => watcher.close()
 
