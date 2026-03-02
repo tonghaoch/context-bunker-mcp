@@ -50,24 +50,30 @@ export function createServer(state: ServerState) {
     return null
   }
 
-  /** Wrap a tool handler with logging + error catching */
+  // Serial queue — process tool calls one at a time to avoid stdout contention
+  let queue: Promise<unknown> = Promise.resolve()
+
+  /** Wrap a tool handler with logging + error catching + serial execution */
   function safeTool<A>(name: string, handler: (args: A) => Promise<ReturnType<typeof text>>) {
-    return async (args: A) => {
-      logger.info(`Tool call: ${name}`, args)
-      try {
-        const result = await handler(args)
-        return result
-      } catch (err) {
-        logger.error(
-          `Tool ${name} failed\n` +
-          `  args: ${JSON.stringify(args)}\n` +
-          `  projectRoot: ${state.projectRoot ?? '(none)'}\n` +
-          `  sessionId: ${state.sessionId ?? '(none)'}`,
-          err,
-        )
-        const msg = err instanceof Error ? err.message : String(err)
-        return text(`Internal error in ${name}: ${msg}\n\nThis error has been logged. Check log file for details.`)
-      }
+    return (args: A) => {
+      const job = queue.then(async () => {
+        logger.info(`Tool call: ${name}`, args)
+        try {
+          return await handler(args)
+        } catch (err) {
+          logger.error(
+            `Tool ${name} failed\n` +
+            `  args: ${JSON.stringify(args)}\n` +
+            `  projectRoot: ${state.projectRoot ?? '(none)'}\n` +
+            `  sessionId: ${state.sessionId ?? '(none)'}`,
+            err,
+          )
+          const msg = err instanceof Error ? err.message : String(err)
+          return text(`Internal error in ${name}: ${msg}\n\nThis error has been logged. Check log file for details.`)
+        }
+      })
+      queue = job.catch(() => {}) // prevent queue from breaking on error
+      return job
     }
   }
 
