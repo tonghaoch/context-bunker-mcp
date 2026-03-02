@@ -85,6 +85,16 @@ if (showStatus) {
   process.exit(0)
 }
 
+// ── Global crash handlers (registered early, before anything async) ──
+process.on('uncaughtException', (err) => {
+  logger.fatal('uncaughtException', err, { pid: process.pid })
+  process.exit(1)
+})
+process.on('unhandledRejection', (reason) => {
+  logger.fatal('unhandledRejection', reason, { pid: process.pid })
+  process.exit(1)
+})
+
 // ── Main: MCP Server ──
 async function main() {
   log('Starting context-bunker MCP server...')
@@ -144,8 +154,17 @@ async function main() {
   await server.connect(transport)
   log('MCP server running on stdio')
 
+  // MCP transport/server event handlers
+  server.server.onerror = (err) => {
+    logger.error('MCP server error:', err)
+  }
+  server.server.onclose = () => {
+    log('MCP transport closed')
+    shutdown()
+  }
+
   // Graceful shutdown
-  const shutdown = async () => {
+  async function shutdown() {
     log('Shutting down...')
     if (state.db && state.sessionId != null) {
       try {
@@ -167,23 +186,6 @@ async function main() {
   }
   process.on('SIGINT', shutdown)
   process.on('SIGTERM', shutdown)
-
-  // Global crash handlers
-  const getState = () => ({
-    projectRoot: state.projectRoot,
-    sessionId: state.sessionId,
-    pid: process.pid,
-  })
-
-  process.on('uncaughtException', (err) => {
-    logger.fatal('uncaughtException', err, getState())
-    process.exit(1)
-  })
-
-  process.on('unhandledRejection', (reason) => {
-    logger.fatal('unhandledRejection', reason, getState())
-    process.exit(1)
-  })
 }
 
 main().catch(err => {
