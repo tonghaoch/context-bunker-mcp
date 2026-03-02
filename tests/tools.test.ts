@@ -156,12 +156,21 @@ describe('find_unused_code', () => {
     expect(result).not.toContain('formatEmail')
   })
 
-  it('does NOT report exported symbols', () => {
+  it('does NOT report symbols referenced from other files', () => {
     const result = findUnusedCode(db)
-    // These are exported — even if never imported, find_unused_code only targets internals
-    expect(result).not.toContain('handleLogin')
-    expect(result).not.toContain('handleRegister')
-    expect(result).not.toContain('SECRET')
+    // login and register are imported and called from app.ts
+    expect(result).not.toContain('\n  function login ')
+    expect(result).not.toContain('\n  function register ')
+    // hashPassword and verifyPassword are imported from auth.ts
+    expect(result).not.toContain('hashPassword')
+    expect(result).not.toContain('verifyPassword')
+  })
+
+  it('detects exported symbols never imported by other files', () => {
+    const result = findUnusedCode(db)
+    // unusedHelper is exported but never imported anywhere
+    expect(result).toContain('unusedHelper')
+    expect(result).toContain('(exported)')
   })
 
   it('filters by kind', () => {
