@@ -1,6 +1,6 @@
 {
   "name": "context-bunker-mcp",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Pre-computed codebase intelligence MCP server. Zero API keys. Code never leaves your machine.",
   "type": "module",
   "bin": {

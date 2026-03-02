@@ -22,6 +22,7 @@ import { findUnusedExports } from './tools/find-unused-exports.js'
 import { searchByPattern } from './tools/search-by-pattern.js'
 import { getFileSummary } from './tools/get-file-summary.js'
 import { searchCode } from './tools/search-code.js'
+import { findUnusedCode } from './tools/find-unused-code.js'
 import type { Logger } from './logger.js'
 
 // Mutable state — allows set_project to swap project at runtime
@@ -38,7 +39,7 @@ export function createServer(state: ServerState) {
   const { logger } = state
   const server = new McpServer({
     name: 'context-bunker',
-    version: '0.1.3',
+    version: '0.1.4',
   })
 
   const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] })
@@ -351,6 +352,21 @@ export function createServer(state: ServerState) {
       const err = requireProject()
       if (err) return text(err)
       return text(searchCode(state.db, query, limit))
+    })
+  )
+
+  // ── find_unused_code ──
+  server.tool(
+    'find_unused_code',
+    'Find dead code: internal symbols (functions, classes, variables, types) that are never called, imported, or exported anywhere.',
+    {
+      scope: z.string().optional().describe('Limit to files matching this path prefix (e.g. "src/utils/")'),
+      kind: z.enum(['function', 'class', 'interface', 'type', 'enum', 'variable']).optional().describe('Filter by symbol kind'),
+    },
+    safeTool('find_unused_code', async ({ scope, kind }: { scope?: string, kind?: string }) => {
+      const err = requireProject()
+      if (err) return text(err)
+      return text(findUnusedCode(state.db, scope, kind))
     })
   )
 

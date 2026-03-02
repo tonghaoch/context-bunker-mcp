@@ -55,12 +55,13 @@ claude mcp add context-bunker -- bunx context-bunker-mcp
 }
 ```
 
-## Tools (15)
+## Tools (16)
 
 | Tool | What it does |
 |------|-------------|
 | 🔥 `get_changes_since_last_session` | What changed since the AI last looked. No more re-orientation. |
 | 🔥 `find_unused_exports` | Dead code detection — exported but never imported anywhere. |
+| 🔥 `find_unused_code` | Find dead internal code — functions, classes, variables, types never referenced. |
 | 🔥 `get_file_summary` | File overview in ~50 tokens. Scan 10 files for the cost of 1. |
 | 🔥 `search_by_pattern` | Find structural patterns: HTTP calls, env access, error handlers, async, TODOs. |
 | 🧠 `get_smart_context` | Full file context in 1 call — imports, exports, dependents, types, tests. |

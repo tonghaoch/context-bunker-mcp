@@ -14,6 +14,7 @@ import { getProjectMap } from '../src/tools/get-project-map.js'
 import { findUnusedExports } from '../src/tools/find-unused-exports.js'
 import { getFileSummary } from '../src/tools/get-file-summary.js'
 import { searchCode } from '../src/tools/search-code.js'
+import { findUnusedCode } from '../src/tools/find-unused-code.js'
 
 const FIXTURE = join(import.meta.dir, 'fixtures', 'small-ts')
 const DB_DIR = join(import.meta.dir, '.tmp-tools-test')
@@ -135,5 +136,67 @@ describe('search_code', () => {
   it('finds relevant files by query', () => {
     const result = searchCode(db, 'password hash verify')
     expect(result).toContain('hash.ts')
+  })
+})
+
+describe('find_unused_code', () => {
+  it('detects unused internal functions', () => {
+    const result = findUnusedCode(db)
+    expect(result).toContain('deadInternalHelper')
+  })
+
+  it('detects unused internal variables', () => {
+    const result = findUnusedCode(db)
+    expect(result).toContain('UNUSED_CONST')
+  })
+
+  it('does NOT report internal functions that are called', () => {
+    const result = findUnusedCode(db)
+    // formatEmail is called by login(), so it should not appear
+    expect(result).not.toContain('formatEmail')
+  })
+
+  it('does NOT report exported symbols', () => {
+    const result = findUnusedCode(db)
+    // These are exported — even if never imported, find_unused_code only targets internals
+    expect(result).not.toContain('handleLogin')
+    expect(result).not.toContain('handleRegister')
+    expect(result).not.toContain('SECRET')
+  })
+
+  it('filters by kind', () => {
+    const result = findUnusedCode(db, undefined, 'function')
+    expect(result).toContain('deadInternalHelper')
+    expect(result).not.toContain('UNUSED_CONST')
+  })
+
+  it('filters by scope', () => {
+    const result = findUnusedCode(db, 'src/auth')
+    expect(result).toContain('deadInternalHelper')
+  })
+
+  it('scope filter excludes other files', () => {
+    const result = findUnusedCode(db, 'src/models')
+    // deadInternalHelper is in auth.ts, not models/
+    expect(result).not.toContain('deadInternalHelper')
+  })
+
+  it('returns friendly message when nothing found', () => {
+    // Use a scope with no unused code
+    const result = findUnusedCode(db, 'nonexistent/')
+    expect(result).toContain('No unused code found')
+  })
+
+  it('groups results by file', () => {
+    const result = findUnusedCode(db)
+    // Both deadInternalHelper and UNUSED_CONST are in auth.ts
+    expect(result).toContain('auth.ts')
+    // Should show line numbers
+    expect(result).toMatch(/L\d+-\d+/)
+  })
+
+  it('includes limitation note', () => {
+    const result = findUnusedCode(db)
+    expect(result).toContain('Note:')
   })
 })
