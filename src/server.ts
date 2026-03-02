@@ -22,6 +22,7 @@ import { findUnusedExports } from './tools/find-unused-exports.js'
 import { searchByPattern } from './tools/search-by-pattern.js'
 import { getFileSummary } from './tools/get-file-summary.js'
 import { searchCode } from './tools/search-code.js'
+import type { Logger } from './logger.js'
 
 // Mutable state — allows set_project to swap project at runtime
 export interface ServerState {
@@ -30,12 +31,14 @@ export interface ServerState {
   config?: Config
   stopWatcher?: () => Promise<void>
   sessionId?: number
+  logger: Logger
 }
 
 export function createServer(state: ServerState) {
+  const { logger } = state
   const server = new McpServer({
     name: 'context-bunker',
-    version: '0.1.2',
+    version: '0.1.3',
   })
 
   const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] })
@@ -47,6 +50,27 @@ export function createServer(state: ServerState) {
     return null
   }
 
+  /** Wrap a tool handler with logging + error catching */
+  function safeTool<A>(name: string, handler: (args: A) => Promise<ReturnType<typeof text>>) {
+    return async (args: A) => {
+      logger.info(`Tool call: ${name}`, args)
+      try {
+        const result = await handler(args)
+        return result
+      } catch (err) {
+        logger.error(
+          `Tool ${name} failed\n` +
+          `  args: ${JSON.stringify(args)}\n` +
+          `  projectRoot: ${state.projectRoot ?? '(none)'}\n` +
+          `  sessionId: ${state.sessionId ?? '(none)'}`,
+          err,
+        )
+        const msg = err instanceof Error ? err.message : String(err)
+        return text(`Internal error in ${name}: ${msg}\n\nThis error has been logged. Check log file for details.`)
+      }
+    }
+  }
+
   // ── set_project ──
   server.tool(
     'set_project',
@@ -54,7 +78,7 @@ export function createServer(state: ServerState) {
     {
       path: z.string().describe('Absolute path to the project root directory'),
     },
-    async ({ path: projectPath }) => {
+    safeTool('set_project', async ({ path: projectPath }: { path: string }) => {
       const absPath = resolve(projectPath)
       if (!existsSync(absPath)) return text(`Directory not found: ${absPath}`)
 
@@ -104,7 +128,7 @@ export function createServer(state: ServerState) {
         '',
         'All tools are now ready. Try get_status or get_project_map.',
       ].join('\n'))
-    }
+    })
   )
 
   // ── get_status ──
@@ -112,7 +136,7 @@ export function createServer(state: ServerState) {
     'get_status',
     'Get index health, stats, and current project info.',
     {},
-    async () => {
+    safeTool('get_status', async () => {
       const err = requireProject()
       if (err) return text(err)
       const stats = getStats(state.db)
@@ -125,7 +149,7 @@ export function createServer(state: ServerState) {
         `  Exports tracked: ${stats.exports}`,
         `  Call edges: ${stats.calls}`,
       ].join('\n'))
-    }
+    })
   )
 
   // ── reindex ──
@@ -133,7 +157,7 @@ export function createServer(state: ServerState) {
     'reindex',
     'Force re-index of the codebase or a single file.',
     { file_path: z.string().optional().describe('Relative path to a specific file. Omit for full re-index.') },
-    async ({ file_path }) => {
+    safeTool('reindex', async ({ file_path }: { file_path?: string }) => {
       const err = requireProject()
       if (err) return text(err)
       if (file_path) {
@@ -143,7 +167,7 @@ export function createServer(state: ServerState) {
       }
       const result = await indexProject(state.db, state.projectRoot, undefined, state.config)
       return text(`Full re-index: ${result.indexed} indexed, ${result.skipped} unchanged, ${result.removed} removed (${result.timeMs}ms)`)
-    }
+    })
   )
 
   // ── find_symbol ──
@@ -155,11 +179,11 @@ export function createServer(state: ServerState) {
       kind: z.enum(['function', 'class', 'interface', 'type', 'enum', 'variable']).optional().describe('Filter by symbol kind'),
       scope: z.string().optional().describe('Filter by file path prefix (e.g. "src/routes/")'),
     },
-    async ({ query, kind, scope }) => {
+    safeTool('find_symbol', async ({ query, kind, scope }: { query: string, kind?: string, scope?: string }) => {
       const err = requireProject()
       if (err) return text(err)
       return text(findSymbol(state.db, query, kind, scope))
-    }
+    })
   )
 
   // ── find_references ──
@@ -170,11 +194,11 @@ export function createServer(state: ServerState) {
       symbol: z.string().describe('Symbol name to find references for'),
       file: z.string().optional().describe('Limit to references of the symbol defined in this file'),
     },
-    async ({ symbol, file }) => {
+    safeTool('find_references', async ({ symbol, file }: { symbol: string, file?: string }) => {
       const err = requireProject()
       if (err) return text(err)
       return text(findReferences(state.db, symbol, file))
-    }
+    })
   )
 
   // ── get_smart_context ──
@@ -184,11 +208,11 @@ export function createServer(state: ServerState) {
     {
       file_path: z.string().describe('Relative path to the file (e.g. "src/auth/middleware.ts")'),
     },
-    async ({ file_path }) => {
+    safeTool('get_smart_context', async ({ file_path }: { file_path: string }) => {
       const err = requireProject()
       if (err) return text(err)
       return text(getSmartContext(state.db, file_path))
-    }
+    })
   )
 
   // ── get_dependency_graph ──
@@ -200,11 +224,11 @@ export function createServer(state: ServerState) {
       direction: z.enum(['dependencies', 'dependents']).default('dependents').describe('"dependents" = files that import this, "dependencies" = files this imports'),
       depth: z.number().min(1).max(10).default(3).describe('How many levels deep to traverse'),
     },
-    async ({ file_path, direction, depth }) => {
+    safeTool('get_dependency_graph', async ({ file_path, direction, depth }: { file_path: string, direction: string, depth: number }) => {
       const err = requireProject()
       if (err) return text(err)
       return text(getDependencyGraph(state.db, file_path, direction, depth))
-    }
+    })
   )
 
   // ── get_call_graph ──
@@ -216,11 +240,11 @@ export function createServer(state: ServerState) {
       file: z.string().optional().describe('File where the function is defined (disambiguates if multiple matches)'),
       depth: z.number().min(1).max(5).default(2).describe('How many levels deep to trace'),
     },
-    async ({ function_name, file, depth }) => {
+    safeTool('get_call_graph', async ({ function_name, file, depth }: { function_name: string, file?: string, depth: number }) => {
       const err = requireProject()
       if (err) return text(err)
       return text(getCallGraph(state.db, function_name, file, depth))
-    }
+    })
   )
 
   // ── get_symbol_source ──
@@ -231,11 +255,11 @@ export function createServer(state: ServerState) {
       symbol: z.string().describe('Symbol name to extract'),
       file: z.string().optional().describe('File where the symbol is defined (disambiguates if multiple matches)'),
     },
-    async ({ symbol, file }) => {
+    safeTool('get_symbol_source', async ({ symbol, file }: { symbol: string, file?: string }) => {
       const err = requireProject()
       if (err) return text(err)
       return text(getSymbolSource(state.db, state.projectRoot, symbol, file))
-    }
+    })
   )
 
   // ── get_project_map ──
@@ -245,11 +269,11 @@ export function createServer(state: ServerState) {
     {
       depth: z.number().min(1).max(5).default(3).describe('How many directory levels deep to show'),
     },
-    async ({ depth }) => {
+    safeTool('get_project_map', async ({ depth }: { depth: number }) => {
       const err = requireProject()
       if (err) return text(err)
       return text(getProjectMap(state.db, depth))
-    }
+    })
   )
 
   // ── get_changes_since_last_session ──
@@ -257,11 +281,11 @@ export function createServer(state: ServerState) {
     'get_changes_since_last_session',
     'What changed in the codebase since the AI last interacted with it. Shows added, modified, and deleted files with their symbols.',
     {},
-    async () => {
+    safeTool('get_changes_since_last_session', async () => {
       const err = requireProject()
       if (err) return text(err)
       return text(getChangesSinceLastSession(state.db, state.projectRoot))
-    }
+    })
   )
 
   // ── find_unused_exports ──
@@ -271,11 +295,11 @@ export function createServer(state: ServerState) {
     {
       scope: z.string().optional().describe('Limit to exports in files matching this path prefix (e.g. "src/utils/")'),
     },
-    async ({ scope }) => {
+    safeTool('find_unused_exports', async ({ scope }: { scope?: string }) => {
       const err = requireProject()
       if (err) return text(err)
       return text(findUnusedExports(state.db, scope))
-    }
+    })
   )
 
   // ── search_by_pattern ──
@@ -286,11 +310,11 @@ export function createServer(state: ServerState) {
       pattern: z.enum(['http_calls', 'env_access', 'error_handlers', 'async_functions', 'todos', 'test_files'])
         .describe('Pattern to search for'),
     },
-    async ({ pattern }) => {
+    safeTool('search_by_pattern', async ({ pattern }: { pattern: string }) => {
       const err = requireProject()
       if (err) return text(err)
       return text(searchByPattern(state.db, pattern))
-    }
+    })
   )
 
   // ── get_file_summary ──
@@ -300,11 +324,11 @@ export function createServer(state: ServerState) {
     {
       file_path: z.string().describe('Relative path to the file'),
     },
-    async ({ file_path }) => {
+    safeTool('get_file_summary', async ({ file_path }: { file_path: string }) => {
       const err = requireProject()
       if (err) return text(err)
       return text(getFileSummary(state.db, file_path))
-    }
+    })
   )
 
   // ── search_code ──
@@ -315,11 +339,11 @@ export function createServer(state: ServerState) {
       query: z.string().describe('Search query (e.g. "authentication middleware", "database connection")'),
       limit: z.number().min(1).max(50).default(10).describe('Max results to return'),
     },
-    async ({ query, limit }) => {
+    safeTool('search_code', async ({ query, limit }: { query: string, limit: number }) => {
       const err = requireProject()
       if (err) return text(err)
       return text(searchCode(state.db, query, limit))
-    }
+    })
   )
 
   return server

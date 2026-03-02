@@ -2,6 +2,11 @@ import { describe, it, expect, beforeAll, afterAll } from 'bun:test'
 import { join } from 'node:path'
 import { rmSync, mkdirSync, writeFileSync } from 'node:fs'
 import { openDatabase, type DB } from '../src/store/db.js'
+
+/** Best-effort cleanup — ignores EBUSY from lingering SQLite locks on Windows */
+function safeRmSync(path: string) {
+  try { rmSync(path, { recursive: true, force: true }) } catch {}
+}
 import { initParser } from '../src/indexer/parser.js'
 import { indexProject } from '../src/indexer/indexer.js'
 import { getFile, getStats } from '../src/store/queries.js'
@@ -91,8 +96,8 @@ describe('indexer filtering', () => {
     expect(large).toBeFalsy()
 
     sizeDb.close()
-    rmSync(tmpFixture, { recursive: true, force: true })
-    rmSync(join(import.meta.dir, '.tmp-maxsize-test'), { recursive: true, force: true })
+    safeRmSync(tmpFixture)
+    safeRmSync(join(import.meta.dir, '.tmp-maxsize-test'))
   })
 
   it('exclude patterns filter out matching files', async () => {
@@ -112,7 +117,7 @@ describe('indexer filtering', () => {
     expect(auth).toBeTruthy()
 
     exclDb.close()
-    rmSync(join(import.meta.dir, '.tmp-exclude-test'), { recursive: true, force: true })
+    safeRmSync(join(import.meta.dir, '.tmp-exclude-test'))
   })
 
   it('language filter restricts indexed file types', async () => {
@@ -130,7 +135,7 @@ describe('indexer filtering', () => {
     expect(tsxFile).toBeFalsy()
 
     langDb.close()
-    rmSync(join(import.meta.dir, '.tmp-lang-filter-test'), { recursive: true, force: true })
+    safeRmSync(join(import.meta.dir, '.tmp-lang-filter-test'))
   })
 })
 

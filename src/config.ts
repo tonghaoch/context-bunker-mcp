@@ -72,7 +72,7 @@ export { CONFIG_FILE, DEFAULT_CONFIG }
 
 // ── DB path resolution ──
 
-function getCacheDir(): string {
+export function getCacheDir(): string {
   if (process.env.XDG_CACHE_HOME) return process.env.XDG_CACHE_HOME
   if (process.platform === 'darwin') return join(homedir(), 'Library', 'Caches')
   if (process.platform === 'win32') return process.env.LOCALAPPDATA ?? join(homedir(), 'AppData', 'Local')

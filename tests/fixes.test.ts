@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test'
 import { join } from 'node:path'
 import { rmSync, writeFileSync, mkdirSync } from 'node:fs'
+
+/** Best-effort cleanup — ignores EBUSY from lingering SQLite locks on Windows */
+function safeRmSync(path: string) {
+  try { rmSync(path, { recursive: true, force: true }) } catch {}
+}
 import { openDatabase, getMeta, setMeta, type DB } from '../src/store/db.js'
 import { SCHEMA_VERSION, MIGRATIONS } from '../src/store/schema.js'
 import { initParser } from '../src/indexer/parser.js'
@@ -26,7 +31,7 @@ beforeAll(async () => {
 })
 
 afterAll(() => {
-  rmSync(TMP_BASE, { recursive: true, force: true })
+  safeRmSync(TMP_BASE)
 })
 
 // ── Fix 1: Schema Migration System ──

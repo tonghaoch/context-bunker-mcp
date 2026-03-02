@@ -9,6 +9,7 @@ import { createServer, type ServerState } from './server.js'
 import { startSession, endSession, getStats } from './store/queries.js'
 import { buildFileSnapshot } from './tools/get-changes.js'
 import { loadConfig, initConfig, getDbPath } from './config.js'
+import { createLogger } from './logger.js'
 
 // ── CLI Args ──
 const args = process.argv.slice(2)
@@ -20,9 +21,9 @@ const doInit = args.includes('--init')
 const showStatus = args.includes('--status')
 const projectArg = args.find(a => !a.startsWith('-'))
 
-function log(...msg: unknown[]) {
-  if (verbose) console.error('[context-bunker]', ...msg)
-}
+// ── Logger ──
+const logger = createLogger(verbose)
+const log = (...msg: unknown[]) => logger.info(...msg)
 
 // ── Help ──
 if (showHelp) {
@@ -92,7 +93,7 @@ async function main() {
   log('Tree-sitter initialized')
 
   // Server state — mutable, allows set_project to swap project
-  const state: ServerState = {} as ServerState
+  const state: ServerState = { logger } as ServerState
 
   // If project path given, index it upfront
   if (projectArg) {
@@ -141,19 +142,45 @@ async function main() {
   const shutdown = async () => {
     log('Shutting down...')
     if (state.db && state.sessionId != null) {
-      const snapshot = buildFileSnapshot(state.db)
-      endSession(state.db, state.sessionId, snapshot)
-      log('Session saved')
+      try {
+        const snapshot = buildFileSnapshot(state.db)
+        endSession(state.db, state.sessionId, snapshot)
+        log('Session saved')
+      } catch (err) {
+        logger.error('Error saving session during shutdown:', err)
+      }
     }
-    if (state.stopWatcher) await state.stopWatcher()
-    if (state.db) state.db.close()
+    if (state.stopWatcher) {
+      try { await state.stopWatcher() } catch (err) { logger.error('Error stopping watcher:', err) }
+    }
+    if (state.db) {
+      try { state.db.close() } catch (err) { logger.error('Error closing DB:', err) }
+    }
+    logger.flush()
     process.exit(0)
   }
   process.on('SIGINT', shutdown)
   process.on('SIGTERM', shutdown)
+
+  // Global crash handlers
+  const getState = () => ({
+    projectRoot: state.projectRoot,
+    sessionId: state.sessionId,
+    pid: process.pid,
+  })
+
+  process.on('uncaughtException', (err) => {
+    logger.fatal('uncaughtException', err, getState())
+    process.exit(1)
+  })
+
+  process.on('unhandledRejection', (reason) => {
+    logger.fatal('unhandledRejection', reason, getState())
+    process.exit(1)
+  })
 }
 
 main().catch(err => {
-  console.error('Fatal error:', err)
+  logger.fatal('main() rejected', err)
   process.exit(1)
 })
