@@ -176,7 +176,7 @@ export async function indexFile(db: DB, filePath: string, projectRoot: string, c
 }
 
 export async function removeFile(db: DB, filePath: string, projectRoot: string) {
-  const relPath = relative(projectRoot, resolve(filePath))
+  const relPath = relative(projectRoot, resolve(filePath)).replace(/\\/g, '/')
   deleteFile(db, relPath)
 }
 

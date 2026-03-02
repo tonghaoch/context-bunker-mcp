@@ -79,10 +79,10 @@ export function getSmartContext(db: DB, filePath: string) {
   let testFile: string | null = null
   for (const { pattern, extensions } of testPatterns) {
     for (const testExt of extensions) {
-      const candidate = join(dir, pattern + testExt)
+      const candidate = normalizePath(join(dir, pattern + testExt))
       if (getFile(db, candidate)) { testFile = candidate; break }
       // Also check tests/ subdirectory
-      const candidate2 = join(dir, '..', 'tests', basename(dir), pattern + testExt)
+      const candidate2 = normalizePath(join(dir, '..', 'tests', basename(dir), pattern + testExt))
       if (getFile(db, candidate2)) { testFile = candidate2; break }
     }
     if (testFile) break

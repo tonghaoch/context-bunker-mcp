@@ -44,16 +44,12 @@ describe('tokenize', () => {
 })
 
 describe('normalizePath', () => {
-  it('normalizes path separators', () => {
-    // On unix, backslashes should become forward slashes
-    if (process.platform !== 'win32') {
-      expect(normalizePath('src\\auth.ts')).toBe('src/auth.ts')
-    }
+  it('converts backslashes to forward slashes', () => {
+    expect(normalizePath('src\\auth.ts')).toBe('src/auth.ts')
   })
 
-  it('preserves already-correct paths', () => {
-    const expected = process.platform === 'win32' ? 'src\\auth.ts' : 'src/auth.ts'
-    expect(normalizePath(expected)).toBe(expected)
+  it('preserves already-forward-slash paths', () => {
+    expect(normalizePath('src/auth.ts')).toBe('src/auth.ts')
   })
 })
 

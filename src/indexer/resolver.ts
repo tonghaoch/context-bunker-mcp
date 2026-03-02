@@ -1,6 +1,8 @@
 import { resolve, dirname, join, relative, isAbsolute } from 'node:path'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 
+const toForward = (p: string) => p.replace(/\\/g, '/')
+
 interface TsConfigPaths {
   baseUrl?: string
   paths?: Record<string, string[]>
@@ -116,14 +118,14 @@ function resolvePythonImport(
     for (let i = 1; i < dots.length; i++) base = dirname(base)
     const absBase = rest ? join(base, rest) : base
     const resolved = tryResolvePython(absBase)
-    if (resolved) return { resolved: relative(projectRoot, resolved), isExternal: false }
-    return { resolved: relative(projectRoot, absBase), isExternal: false }
+    if (resolved) return { resolved: toForward(relative(projectRoot, resolved)), isExternal: false }
+    return { resolved: toForward(relative(projectRoot, absBase)), isExternal: false }
   }
   // Absolute import: check if it maps to a local file
   const asPath = fromPath.replace(/\./g, '/')
   const absBase = join(projectRoot, asPath)
   const resolved = tryResolvePython(absBase)
-  if (resolved) return { resolved: relative(projectRoot, resolved), isExternal: false }
+  if (resolved) return { resolved: toForward(relative(projectRoot, resolved)), isExternal: false }
   return { resolved: fromPath, isExternal: true }
 }
 
@@ -140,11 +142,11 @@ function resolveGoImport(
       try {
         const files = readdirSync(dirPath).filter(f => f.endsWith('.go') && !f.endsWith('_test.go'))
         if (files.length > 0) {
-          return { resolved: join(localPath, files[0]), isExternal: false }
+          return { resolved: toForward(join(localPath, files[0])), isExternal: false }
         }
       } catch { /* fallthrough */ }
     }
-    return { resolved: localPath, isExternal: false }
+    return { resolved: toForward(localPath), isExternal: false }
   }
   return { resolved: fromPath, isExternal: true }
 }
@@ -159,9 +161,9 @@ function resolveRustImport(
     const rest = fromPath.slice('crate::'.length).replace(/::/g, '/')
     // Try src/{rest}.rs or src/{rest}/mod.rs
     const base = join(projectRoot, 'src', rest)
-    if (existsSync(base + '.rs')) return { resolved: relative(projectRoot, base + '.rs'), isExternal: false }
+    if (existsSync(base + '.rs')) return { resolved: toForward(relative(projectRoot, base + '.rs')), isExternal: false }
     const modPath = join(base, 'mod.rs')
-    if (existsSync(modPath)) return { resolved: relative(projectRoot, modPath), isExternal: false }
+    if (existsSync(modPath)) return { resolved: toForward(relative(projectRoot, modPath)), isExternal: false }
     return { resolved: 'src/' + rest.replace(/\//g, '/') + '.rs', isExternal: false }
   }
   // super:: → relative parent module
@@ -170,16 +172,16 @@ function resolveRustImport(
     const dir = dirname(importingFile)
     const parent = dirname(dir)
     const base = join(parent, rest)
-    if (existsSync(base + '.rs')) return { resolved: relative(projectRoot, base + '.rs'), isExternal: false }
-    return { resolved: relative(projectRoot, base) + '.rs', isExternal: false }
+    if (existsSync(base + '.rs')) return { resolved: toForward(relative(projectRoot, base + '.rs')), isExternal: false }
+    return { resolved: toForward(relative(projectRoot, base)) + '.rs', isExternal: false }
   }
   // self:: → current module
   if (fromPath.startsWith('self::')) {
     const rest = fromPath.slice('self::'.length).replace(/::/g, '/')
     const dir = dirname(importingFile)
     const base = join(dir, rest)
-    if (existsSync(base + '.rs')) return { resolved: relative(projectRoot, base + '.rs'), isExternal: false }
-    return { resolved: relative(projectRoot, base) + '.rs', isExternal: false }
+    if (existsSync(base + '.rs')) return { resolved: toForward(relative(projectRoot, base + '.rs')), isExternal: false }
+    return { resolved: toForward(relative(projectRoot, base)) + '.rs', isExternal: false }
   }
   // External crate
   return { resolved: fromPath, isExternal: true }
@@ -197,7 +199,7 @@ function resolveJavaImport(
   for (const srcRoot of JAVA_SOURCE_ROOTS) {
     const candidate = join(projectRoot, srcRoot, asPath + '.java')
     if (existsSync(candidate)) {
-      return { resolved: relative(projectRoot, candidate), isExternal: false }
+      return { resolved: toForward(relative(projectRoot, candidate)), isExternal: false }
     }
     // Try as directory (package import)
     const dirCandidate = join(projectRoot, srcRoot, asPath)
@@ -205,7 +207,7 @@ function resolveJavaImport(
       try {
         const files = readdirSync(dirCandidate).filter(f => f.endsWith('.java'))
         if (files.length > 0) {
-          return { resolved: join(relative(projectRoot, dirCandidate), files[0]), isExternal: false }
+          return { resolved: toForward(join(relative(projectRoot, dirCandidate), files[0])), isExternal: false }
         }
       } catch { /* fallthrough */ }
     }
@@ -213,7 +215,7 @@ function resolveJavaImport(
   // Try project root directly
   const directCandidate = join(projectRoot, asPath + '.java')
   if (existsSync(directCandidate)) {
-    return { resolved: relative(projectRoot, directCandidate), isExternal: false }
+    return { resolved: toForward(relative(projectRoot, directCandidate)), isExternal: false }
   }
   return { resolved: fromPath, isExternal: true }
 }
@@ -252,7 +254,7 @@ export function resolveImportPath(
               : resolve(projectRoot, targetPrefix, rest)
             const resolved = tryResolveFile(base)
             if (resolved) {
-              return { resolved: relative(projectRoot, resolved), isExternal: false }
+              return { resolved: toForward(relative(projectRoot, resolved)), isExternal: false }
             }
           }
         }
@@ -264,7 +266,7 @@ export function resolveImportPath(
       const base = resolve(projectRoot, tsConfig.baseUrl, fromPath)
       const resolved = tryResolveFile(base)
       if (resolved) {
-        return { resolved: relative(projectRoot, resolved), isExternal: false }
+        return { resolved: toForward(relative(projectRoot, resolved)), isExternal: false }
       }
     }
 
@@ -277,11 +279,11 @@ export function resolveImportPath(
   const absBase = isAbsolute(fromPath) ? fromPath : resolve(dir, fromPath)
   const resolved = tryResolveFile(absBase)
   if (resolved) {
-    return { resolved: relative(projectRoot, resolved), isExternal: false }
+    return { resolved: toForward(relative(projectRoot, resolved)), isExternal: false }
   }
 
   // Fallback: return as-is relative to project root
-  return { resolved: relative(projectRoot, absBase), isExternal: false }
+  return { resolved: toForward(relative(projectRoot, absBase)), isExternal: false }
 }
 
 export function clearResolverCache() {
