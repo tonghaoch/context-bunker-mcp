@@ -1,4 +1,4 @@
-import { CREATE_TABLES, SCHEMA_VERSION, MIGRATIONS } from './schema.js'
+import { CREATE_TABLES, SCHEMA_VERSION } from './schema.js'
 import { mkdirSync, existsSync } from 'node:fs'
 import { dirname } from 'node:path'
 
@@ -94,29 +94,28 @@ export async function openDatabase(dbPath: string): Promise<DB> {
     ? await openBunSqlite(dbPath)
     : await openBetterSqlite3(dbPath)
 
-  // Init schema — always run CREATE TABLE IF NOT EXISTS first
+  // Init schema
   db.exec(CREATE_TABLES)
 
   const stored = Number(getMeta(db, 'schema_version') ?? '0')
-  if (stored < SCHEMA_VERSION) {
-    // Run pending migrations in a transaction
-    const pending = MIGRATIONS.filter(m => m.version > stored)
-    if (pending.length > 0) {
-      const migrate = db.transaction(() => {
-        for (const m of pending) {
-          db.exec(m.sql)
-        }
-        setMeta(db, 'schema_version', String(SCHEMA_VERSION))
-        // Force full re-index so new tables (e.g. refs) get populated for existing files
-        db.exec("UPDATE files SET hash = ''")
-      })
-      migrate()
-    } else {
-      // No migrations needed (fresh DB or version gap with no migrations)
-      setMeta(db, 'schema_version', String(SCHEMA_VERSION))
-    }
-  } else if (stored > SCHEMA_VERSION) {
-    console.error(`[context-bunker] Warning: DB schema version (${stored}) is newer than code (${SCHEMA_VERSION}). Continuing anyway.`)
+  if (stored === 0) {
+    // Fresh DB
+    setMeta(db, 'schema_version', String(SCHEMA_VERSION))
+  } else if (stored !== SCHEMA_VERSION) {
+    // Version mismatch — drop everything and re-create
+    db.exec(`
+      DROP TABLE IF EXISTS refs;
+      DROP TABLE IF EXISTS calls;
+      DROP TABLE IF EXISTS tfidf;
+      DROP TABLE IF EXISTS idf;
+      DROP TABLE IF EXISTS sessions;
+      DROP TABLE IF EXISTS exports;
+      DROP TABLE IF EXISTS imports;
+      DROP TABLE IF EXISTS symbols;
+      DROP TABLE IF EXISTS files;
+    `)
+    db.exec(CREATE_TABLES)
+    setMeta(db, 'schema_version', String(SCHEMA_VERSION))
   }
 
   return withStatementCache(db)

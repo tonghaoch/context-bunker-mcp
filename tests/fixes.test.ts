@@ -7,7 +7,7 @@ function safeRmSync(path: string) {
   try { rmSync(path, { recursive: true, force: true }) } catch {}
 }
 import { openDatabase, getMeta, setMeta, type DB } from '../src/store/db.js'
-import { SCHEMA_VERSION, MIGRATIONS } from '../src/store/schema.js'
+import { SCHEMA_VERSION } from '../src/store/schema.js'
 import { initParser } from '../src/indexer/parser.js'
 import { indexProject, indexFile } from '../src/indexer/indexer.js'
 import { resolveImportPath, clearResolverCache } from '../src/indexer/resolver.js'
@@ -35,11 +35,11 @@ afterAll(() => {
   safeRmSync(TMP_BASE)
 })
 
-// ── Fix 1: Schema Migration System ──
+// ── Fix 1: Schema Version ──
 
-describe('schema migration', () => {
+describe('schema version', () => {
   it('sets schema_version on fresh database', async () => {
-    const dbDir = tmpDir('migration-fresh')
+    const dbDir = tmpDir('schema-fresh')
     const db = await openDatabase(join(dbDir, 'index.db'))
     const version = getMeta(db, 'schema_version')
     expect(version).toBe(String(SCHEMA_VERSION))
@@ -47,7 +47,7 @@ describe('schema migration', () => {
   })
 
   it('reopens existing database without error', async () => {
-    const dbDir = tmpDir('migration-reopen')
+    const dbDir = tmpDir('schema-reopen')
     const db1 = await openDatabase(join(dbDir, 'index.db'))
     const v1 = getMeta(db1, 'schema_version')
     expect(v1).toBe(String(SCHEMA_VERSION))
@@ -61,7 +61,7 @@ describe('schema migration', () => {
   })
 
   it('getMeta/setMeta work as helpers', async () => {
-    const dbDir = tmpDir('migration-helpers')
+    const dbDir = tmpDir('schema-helpers')
     const db = await openDatabase(join(dbDir, 'index.db'))
     setMeta(db, 'test_key', 'test_value')
     expect(getMeta(db, 'test_key')).toBe('test_value')
@@ -71,22 +71,18 @@ describe('schema migration', () => {
     db.close()
   })
 
-  it('warns on newer DB version (does not crash)', async () => {
-    const dbDir = tmpDir('migration-newer')
+  it('drops and re-creates tables on version mismatch', async () => {
+    const dbDir = tmpDir('schema-mismatch')
     const db1 = await openDatabase(join(dbDir, 'index.db'))
-    // Simulate a newer version by setting it higher
+    // Simulate a different version
     setMeta(db1, 'schema_version', '999')
     db1.close()
 
-    // Reopen — should not throw
+    // Reopen — should drop tables and re-create with current version
     const db2 = await openDatabase(join(dbDir, 'index.db'))
     const v = getMeta(db2, 'schema_version')
-    expect(v).toBe('999') // Should not downgrade
+    expect(v).toBe(String(SCHEMA_VERSION))
     db2.close()
-  })
-
-  it('MIGRATIONS array is defined and is an array', () => {
-    expect(Array.isArray(MIGRATIONS)).toBe(true)
   })
 })
 
@@ -235,48 +231,7 @@ describe('go method call scope', () => {
   })
 })
 
-// ── Fix 7: Migration Invalidates File Hashes ──
-
 const TS_FIXTURE = join(import.meta.dir, 'fixtures', 'small-ts')
-
-describe('migration invalidates file hashes', () => {
-  it('re-indexes all files after migration so refs are populated', async () => {
-    // Step 1: Index normally — refs should be populated
-    const dbDir = tmpDir('migration-reindex')
-    const dbPath = join(dbDir, 'index.db')
-    const db1 = await openDatabase(dbPath)
-    await indexProject(db1, TS_FIXTURE)
-
-    // Sanity check: formatEmail (internal, used) should NOT appear in unused code
-    const result1 = findUnusedCode(db1)
-    expect(result1).not.toContain('formatEmail')
-
-    // Step 2: Simulate pre-migration state by clearing refs and downgrading version
-    db1.exec('DELETE FROM refs')
-    setMeta(db1, 'schema_version', '1')
-    db1.close()
-
-    // Without the fix, reopening the DB would run the migration (creating the
-    // refs table, which already exists) but NOT re-index files. The refs table
-    // would remain empty, causing false positives in find_unused_code.
-
-    // Step 3: Reopen — migration should run and invalidate hashes
-    const db2 = await openDatabase(dbPath)
-
-    // Step 4: Re-index — all files should be re-indexed because hashes were cleared
-    const result = await indexProject(db2, TS_FIXTURE)
-    expect(result.indexed).toBeGreaterThan(0)
-    expect(result.skipped).toBe(0)
-
-    // Step 5: find_unused_code should no longer have false positives
-    const unused = findUnusedCode(db2)
-    expect(unused).not.toContain('formatEmail')
-    // But genuinely unused code should still be detected
-    expect(unused).toContain('deadInternalHelper')
-
-    db2.close()
-  })
-})
 
 // ── Fix 8: Default Parameter Values and Shorthand Properties in Refs ──
 

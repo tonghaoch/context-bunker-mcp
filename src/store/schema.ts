@@ -1,20 +1,4 @@
-export const SCHEMA_VERSION = 2
-
-// Each migration runs when stored version < migration.version
-// Add new migrations at the end with incrementing version numbers
-export const MIGRATIONS: { version: number; sql: string }[] = [
-  {
-    version: 2,
-    sql: `
-      CREATE TABLE IF NOT EXISTS refs (
-        file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
-        name TEXT NOT NULL
-      );
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_refs_file_name ON refs(file_id, name);
-      CREATE INDEX IF NOT EXISTS idx_refs_name ON refs(name);
-    `,
-  },
-]
+export const SCHEMA_VERSION = 1
 
 export const CREATE_TABLES = `
 CREATE TABLE IF NOT EXISTS meta (
