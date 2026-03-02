@@ -78,6 +78,14 @@ export function upsertFile(db: DB, path: string, hash: string, mtime: number, li
   ).run(path, hash, mtime, lines, Date.now(), hash, mtime, lines, Date.now())
 }
 
+export function invalidateFileHash(db: DB, path: string) {
+  db.prepare("UPDATE files SET hash = '' WHERE path = ?").run(path)
+}
+
+export function invalidateAllFileHashes(db: DB) {
+  db.exec("UPDATE files SET hash = ''")
+}
+
 export function deleteFile(db: DB, path: string) {
   db.prepare('DELETE FROM files WHERE path = ?').run(path)
 }

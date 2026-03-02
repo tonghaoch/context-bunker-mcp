@@ -107,6 +107,8 @@ export async function openDatabase(dbPath: string): Promise<DB> {
           db.exec(m.sql)
         }
         setMeta(db, 'schema_version', String(SCHEMA_VERSION))
+        // Force full re-index so new tables (e.g. refs) get populated for existing files
+        db.exec("UPDATE files SET hash = ''")
       })
       migrate()
     } else {

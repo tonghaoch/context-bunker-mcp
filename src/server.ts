@@ -4,7 +4,7 @@ import { resolve } from 'node:path'
 import { existsSync } from 'node:fs'
 import type { DB } from './store/db.js'
 import { openDatabase } from './store/db.js'
-import { getStats, startSession, endSession } from './store/queries.js'
+import { getStats, startSession, endSession, invalidateFileHash, invalidateAllFileHashes } from './store/queries.js'
 import { indexProject, indexFile, removeFile } from './indexer/indexer.js'
 import { initParser } from './indexer/parser.js'
 import { startWatcher } from './indexer/watcher.js'
@@ -171,9 +171,11 @@ export function createServer(state: ServerState) {
       if (err) return text(err)
       if (file_path) {
         const fullPath = resolve(state.projectRoot, file_path)
+        invalidateFileHash(state.db, file_path)
         const changed = await indexFile(state.db, fullPath, state.projectRoot, state.config)
         return text(changed ? `Re-indexed: ${file_path}` : `No changes: ${file_path}`)
       }
+      invalidateAllFileHashes(state.db)
       const result = await indexProject(state.db, state.projectRoot, undefined, state.config)
       return text(`Full re-index: ${result.indexed} indexed, ${result.skipped} unchanged, ${result.removed} removed (${result.timeMs}ms)`)
     })

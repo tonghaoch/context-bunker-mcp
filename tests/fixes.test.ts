@@ -15,6 +15,7 @@ import {
   getStats, getFile, getSymbolsByFile, getImportsByFile,
   getCallsBySymbol,
 } from '../src/store/queries.js'
+import { findUnusedCode } from '../src/tools/find-unused-code.js'
 
 const GO_FIXTURE = join(import.meta.dir, 'fixtures', 'small-go')
 const TMP_BASE = join(import.meta.dir, '.tmp-fixes-test')
@@ -231,5 +232,48 @@ describe('go method call scope', () => {
     expect(mainCalls.length).toBeGreaterThan(0)
 
     db.close()
+  })
+})
+
+// ── Fix 7: Migration Invalidates File Hashes ──
+
+const TS_FIXTURE = join(import.meta.dir, 'fixtures', 'small-ts')
+
+describe('migration invalidates file hashes', () => {
+  it('re-indexes all files after migration so refs are populated', async () => {
+    // Step 1: Index normally — refs should be populated
+    const dbDir = tmpDir('migration-reindex')
+    const dbPath = join(dbDir, 'index.db')
+    const db1 = await openDatabase(dbPath)
+    await indexProject(db1, TS_FIXTURE)
+
+    // Sanity check: formatEmail (internal, used) should NOT appear in unused code
+    const result1 = findUnusedCode(db1)
+    expect(result1).not.toContain('formatEmail')
+
+    // Step 2: Simulate pre-migration state by clearing refs and downgrading version
+    db1.exec('DELETE FROM refs')
+    setMeta(db1, 'schema_version', '1')
+    db1.close()
+
+    // Without the fix, reopening the DB would run the migration (creating the
+    // refs table, which already exists) but NOT re-index files. The refs table
+    // would remain empty, causing false positives in find_unused_code.
+
+    // Step 3: Reopen — migration should run and invalidate hashes
+    const db2 = await openDatabase(dbPath)
+
+    // Step 4: Re-index — all files should be re-indexed because hashes were cleared
+    const result = await indexProject(db2, TS_FIXTURE)
+    expect(result.indexed).toBeGreaterThan(0)
+    expect(result.skipped).toBe(0)
+
+    // Step 5: find_unused_code should no longer have false positives
+    const unused = findUnusedCode(db2)
+    expect(unused).not.toContain('formatEmail')
+    // But genuinely unused code should still be detected
+    expect(unused).toContain('deadInternalHelper')
+
+    db2.close()
   })
 })
