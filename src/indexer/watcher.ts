@@ -47,7 +47,40 @@ const IGNORED = [
   '**/.vscode/**',
 ]
 
+const DEBOUNCE_MS = 300
+
 export function startWatcher(projectRoot: string, callbacks: WatcherCallbacks) {
+  const pendingChanges = new Map<string, 'add' | 'change'>()
+  const pendingUnlinks = new Set<string>()
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null
+
+  const toError = (e: unknown) => e instanceof Error ? e : new Error(String(e))
+
+  function flush() {
+    debounceTimer = null
+    const changes = new Map(pendingChanges)
+    const unlinks = new Set(pendingUnlinks)
+    pendingChanges.clear()
+    pendingUnlinks.clear()
+
+    for (const path of unlinks) {
+      if (!changes.has(path)) {
+        Promise.resolve(callbacks.onUnlink(path))
+          .catch(e => callbacks.onCallbackError?.(toError(e), path, 'unlink'))
+      }
+    }
+    for (const [path, event] of changes) {
+      const cb = event === 'add' ? callbacks.onAdd : callbacks.onChange
+      Promise.resolve(cb(path))
+        .catch(e => callbacks.onCallbackError?.(toError(e), path, event))
+    }
+  }
+
+  function schedule() {
+    if (debounceTimer) clearTimeout(debounceTimer)
+    debounceTimer = setTimeout(flush, DEBOUNCE_MS)
+  }
+
   const watcher = watch(projectRoot, {
     ignored: IGNORED,
     persistent: true,
@@ -55,18 +88,27 @@ export function startWatcher(projectRoot: string, callbacks: WatcherCallbacks) {
     awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 50 },
   })
 
-  const toError = (e: unknown) => e instanceof Error ? e : new Error(String(e))
-
   watcher.on('add', (path) => {
-    if (isSupportedFile(path)) Promise.resolve(callbacks.onAdd(path)).catch(e => callbacks.onCallbackError?.(toError(e), path, 'add'))
+    if (isSupportedFile(path)) {
+      pendingChanges.set(path, 'add')
+      pendingUnlinks.delete(path)
+      schedule()
+    }
   })
 
   watcher.on('change', (path) => {
-    if (isSupportedFile(path)) Promise.resolve(callbacks.onChange(path)).catch(e => callbacks.onCallbackError?.(toError(e), path, 'change'))
+    if (isSupportedFile(path)) {
+      pendingChanges.set(path, pendingChanges.get(path) ?? 'change')
+      schedule()
+    }
   })
 
   watcher.on('unlink', (path) => {
-    if (isSupportedFile(path)) Promise.resolve(callbacks.onUnlink(path)).catch(e => callbacks.onCallbackError?.(toError(e), path, 'unlink'))
+    if (isSupportedFile(path)) {
+      pendingUnlinks.add(path)
+      pendingChanges.delete(path)
+      schedule()
+    }
   })
 
   watcher.on('error', (err: unknown) => {
@@ -74,6 +116,9 @@ export function startWatcher(projectRoot: string, callbacks: WatcherCallbacks) {
   })
 
   return {
-    close: () => watcher.close(),
+    close: () => {
+      if (debounceTimer) clearTimeout(debounceTimer)
+      return watcher.close()
+    },
   }
 }

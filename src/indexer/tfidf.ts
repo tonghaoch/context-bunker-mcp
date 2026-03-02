@@ -1,23 +1,58 @@
 import type { DB } from '../store/db.js'
 
-// Split camelCase, PascalCase, snake_case, SCREAMING_CASE into lowercase terms
+// Single-pass tokenizer: splits camelCase, PascalCase, snake_case, SCREAMING_CASE
+// into lowercase terms. Avoids 3 regex replacements + split + filter on full file content.
 export function tokenize(text: string): string[] {
-  return text
-    // Insert space before uppercase letters in camelCase/PascalCase
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
-    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
-    // Replace non-alphanumeric with space
-    .replace(/[^a-zA-Z0-9]/g, ' ')
-    .toLowerCase()
-    .split(/\s+/)
-    .filter(t => t.length > 1) // drop single chars
+  const terms: string[] = []
+  let start = -1 // -1 means not in a token
+
+  for (let i = 0; i <= text.length; i++) {
+    const ch = i < text.length ? text.charCodeAt(i) : 0
+    const isUpper = ch >= 65 && ch <= 90    // A-Z
+    const isLower = ch >= 97 && ch <= 122   // a-z
+    const isDigit = ch >= 48 && ch <= 57    // 0-9
+    const isAlnum = isUpper || isLower || isDigit
+
+    if (!isAlnum) {
+      // End current token
+      if (start >= 0 && i - start > 1) {
+        terms.push(text.slice(start, i).toLowerCase())
+      }
+      start = -1
+      continue
+    }
+
+    if (start < 0) {
+      // Start new token
+      start = i
+      continue
+    }
+
+    // CamelCase split: lowercase followed by uppercase (e.g., "myFunc" -> "my", "Func")
+    const prevLower = text.charCodeAt(i - 1) >= 97 && text.charCodeAt(i - 1) <= 122
+    if (isUpper && prevLower) {
+      if (i - start > 1) terms.push(text.slice(start, i).toLowerCase())
+      start = i
+      continue
+    }
+
+    // SCREAMING split: multiple uppercase followed by uppercase+lowercase (e.g., "XMLParser" -> "XML", "Parser")
+    const prevUpper = text.charCodeAt(i - 1) >= 65 && text.charCodeAt(i - 1) <= 90
+    if (isLower && prevUpper && i - start > 1) {
+      if (i - 1 - start > 1) terms.push(text.slice(start, i - 1).toLowerCase())
+      start = i - 1
+    }
+  }
+
+  return terms
 }
 
 // Compute term frequencies for a single file's content
 function computeTF(terms: string[]): Map<string, number> {
   const freq = new Map<string, number>()
   for (const t of terms) freq.set(t, (freq.get(t) ?? 0) + 1)
-  const max = Math.max(...freq.values(), 1)
+  let max = 1
+  for (const v of freq.values()) { if (v > max) max = v }
   // Normalize: tf = count / maxCount
   for (const [k, v] of freq) freq.set(k, v / max)
   return freq
@@ -42,17 +77,20 @@ export function recomputeIDF(db: DB) {
   const totalFiles = (db.prepare('SELECT COUNT(*) as n FROM files').get() as { n: number }).n
   if (totalFiles === 0) return
 
-  db.prepare('DELETE FROM idf').run()
+  const run = db.transaction(() => {
+    db.prepare('DELETE FROM idf').run()
 
-  // For each term: IDF = log(totalFiles / docFreq)
-  const termCounts = db.prepare(
-    'SELECT term, COUNT(DISTINCT file_id) as df FROM tfidf GROUP BY term'
-  ).all() as { term: string; df: number }[]
+    // For each term: IDF = log(totalFiles / docFreq)
+    const termCounts = db.prepare(
+      'SELECT term, COUNT(DISTINCT file_id) as df FROM tfidf GROUP BY term'
+    ).all() as { term: string; df: number }[]
 
-  const insert = db.prepare('INSERT INTO idf (term, idf) VALUES (?, ?)')
-  for (const { term, df } of termCounts) {
-    insert.run(term, Math.log(totalFiles / df))
-  }
+    const insert = db.prepare('INSERT INTO idf (term, idf) VALUES (?, ?)')
+    for (const { term, df } of termCounts) {
+      insert.run(term, Math.log(totalFiles / df))
+    }
+  })
+  run()
 }
 
 // Search: returns file IDs ranked by TF-IDF score

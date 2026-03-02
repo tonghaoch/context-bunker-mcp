@@ -247,8 +247,7 @@ function extractExportStatement(node: SyntaxNode): ExtractedExport[] {
   return result
 }
 
-function extractCalls(node: SyntaxNode, parentSymbol?: string): ExtractedCall[] {
-  const calls: ExtractedCall[] = []
+function extractCalls(node: SyntaxNode, parentSymbol?: string, calls: ExtractedCall[] = []): ExtractedCall[] {
 
   if (node.type === 'call_expression') {
     const fn = node.child(0)
@@ -274,7 +273,7 @@ function extractCalls(node: SyntaxNode, parentSymbol?: string): ExtractedCall[] 
   }
 
   for (let i = 0; i < node.childCount; i++) {
-    calls.push(...extractCalls(node.child(i)!, newParent))
+    extractCalls(node.child(i)!, newParent, calls)
   }
   return calls
 }

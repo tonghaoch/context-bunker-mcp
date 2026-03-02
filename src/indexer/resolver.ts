@@ -12,6 +12,15 @@ let cachedTsConfig: TsConfigPaths | null = null
 let cachedProjectRoot: string | null = null
 let cachedGoModule: string | null = null
 let cachedGoModRoot: string | null = null
+let resolveCache: Map<string, string | null> | null = null
+
+export function enableResolveCache() {
+  resolveCache = new Map()
+}
+
+export function disableResolveCache() {
+  resolveCache = null
+}
 
 const EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']
 const PY_EXTENSIONS = ['.py']
@@ -47,7 +56,7 @@ function stripJsExtension(p: string): string {
   return p.replace(/\.(js|mjs|cjs|jsx)$/, '')
 }
 
-function tryResolveFile(basePath: string): string | null {
+function tryResolveFileUncached(basePath: string): string | null {
   // Exact file exists
   if (existsSync(basePath)) return basePath
 
@@ -78,6 +87,16 @@ function tryResolveFile(basePath: string): string | null {
   }
 
   return null
+}
+
+function tryResolveFile(basePath: string): string | null {
+  if (resolveCache) {
+    const cached = resolveCache.get(basePath)
+    if (cached !== undefined) return cached
+  }
+  const result = tryResolveFileUncached(basePath)
+  resolveCache?.set(basePath, result)
+  return result
 }
 
 function loadGoModule(projectRoot: string): string | null {
@@ -291,4 +310,5 @@ export function clearResolverCache() {
   cachedProjectRoot = null
   cachedGoModule = null
   cachedGoModRoot = null
+  resolveCache = null
 }

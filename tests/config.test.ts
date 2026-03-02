@@ -76,13 +76,15 @@ describe('indexer filtering', () => {
 
   it('maxFileSize excludes large files', async () => {
     const tmpFixture = join(import.meta.dir, '.tmp-maxsize-fixture')
+    const tmpDbDir = join(import.meta.dir, '.tmp-maxsize-test')
     rmSync(tmpFixture, { recursive: true, force: true })
+    rmSync(tmpDbDir, { recursive: true, force: true })
     mkdirSync(tmpFixture, { recursive: true })
     // Create a small file and a large file
     writeFileSync(join(tmpFixture, 'small.ts'), 'export const x = 1')
     writeFileSync(join(tmpFixture, 'large.ts'), 'export const y = ' + 'x'.repeat(500))
 
-    const sizeDb = await openDatabase(join(import.meta.dir, '.tmp-maxsize-test', 'index.db'))
+    const sizeDb = await openDatabase(join(tmpDbDir, 'index.db'))
     await indexProject(sizeDb, tmpFixture, undefined, {
       ...DEFAULT_CONFIG,
       include: [],

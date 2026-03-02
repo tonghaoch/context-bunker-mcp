@@ -207,8 +207,7 @@ function extractImportDecl(node: SyntaxNode): ExtractedImport | null {
   }
 }
 
-function extractCalls(node: SyntaxNode, parentSymbol?: string): ExtractedCall[] {
-  const calls: ExtractedCall[] = []
+function extractCalls(node: SyntaxNode, parentSymbol?: string, calls: ExtractedCall[] = []): ExtractedCall[] {
 
   if (node.type === 'method_invocation') {
     // Method invocation: [object.]method(args)
@@ -268,7 +267,7 @@ function extractCalls(node: SyntaxNode, parentSymbol?: string): ExtractedCall[] 
   }
 
   for (let i = 0; i < node.childCount; i++) {
-    calls.push(...extractCalls(node.child(i)!, newParent))
+    extractCalls(node.child(i)!, newParent, calls)
   }
   return calls
 }

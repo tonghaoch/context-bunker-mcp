@@ -67,11 +67,13 @@ export function getAllFiles(db: DB) {
   return db.prepare('SELECT * FROM files').all() as FileRow[]
 }
 
-export function upsertFile(db: DB, path: string, hash: string, mtime: number, lines: number) {
-  return db.prepare(
+export function upsertFile(db: DB, path: string, hash: string, mtime: number, lines: number): number {
+  const row = db.prepare(
     `INSERT INTO files (path, hash, mtime, lines, indexed_at) VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT(path) DO UPDATE SET hash=?, mtime=?, lines=?, indexed_at=?`
-  ).run(path, hash, mtime, lines, Date.now(), hash, mtime, lines, Date.now())
+     ON CONFLICT(path) DO UPDATE SET hash=?, mtime=?, lines=?, indexed_at=?
+     RETURNING id`
+  ).get(path, hash, mtime, lines, Date.now(), hash, mtime, lines, Date.now()) as { id: number }
+  return row.id
 }
 
 export function invalidateFileHash(db: DB, path: string) {
