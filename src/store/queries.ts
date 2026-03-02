@@ -63,10 +63,6 @@ export function getFile(db: DB, path: string) {
   return db.prepare('SELECT * FROM files WHERE path = ?').get(path) as FileRow | undefined
 }
 
-export function getFileById(db: DB, id: number) {
-  return db.prepare('SELECT * FROM files WHERE id = ?').get(id) as FileRow | undefined
-}
-
 export function getAllFiles(db: DB) {
   return db.prepare('SELECT * FROM files').all() as FileRow[]
 }
