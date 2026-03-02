@@ -13,13 +13,16 @@ let cachedProjectRoot: string | null = null
 let cachedGoModule: string | null = null
 let cachedGoModRoot: string | null = null
 let resolveCache: Map<string, string | null> | null = null
+let dirCache: Map<string, Set<string>> | null = null
 
 export function enableResolveCache() {
   resolveCache = new Map()
+  dirCache = new Map()
 }
 
 export function disableResolveCache() {
   resolveCache = null
+  dirCache = null
 }
 
 const EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']
@@ -56,9 +59,27 @@ function stripJsExtension(p: string): string {
   return p.replace(/\.(js|mjs|cjs|jsx)$/, '')
 }
 
+function fileExists(filePath: string): boolean {
+  if (dirCache) {
+    const dir = dirname(filePath)
+    const base = filePath.slice(dir.length + 1)
+    let entries = dirCache.get(dir)
+    if (!entries) {
+      try {
+        entries = new Set(readdirSync(dir))
+      } catch {
+        entries = new Set()
+      }
+      dirCache.set(dir, entries)
+    }
+    return entries.has(base)
+  }
+  return existsSync(filePath)
+}
+
 function tryResolveFileUncached(basePath: string): string | null {
   // Exact file exists
-  if (existsSync(basePath)) return basePath
+  if (fileExists(basePath)) return basePath
 
   // Strip .js extension (TS imports use .js for compiled output)
   const stripped = stripJsExtension(basePath)
@@ -66,7 +87,7 @@ function tryResolveFileUncached(basePath: string): string | null {
   // Try extensions on stripped path
   for (const ext of EXTENSIONS) {
     const withExt = stripped + ext
-    if (existsSync(withExt)) return withExt
+    if (fileExists(withExt)) return withExt
   }
 
   // Try extensions on original path (in case basePath has no extension)
@@ -76,14 +97,14 @@ function tryResolveFileUncached(basePath: string): string | null {
     // Also try index files on stripped
     for (const ext of EXTENSIONS) {
       const indexFile = join(stripped, `index${ext}`)
-      if (existsSync(indexFile)) return indexFile
+      if (fileExists(indexFile)) return indexFile
     }
   }
 
   // Try index files (barrel) on original
   for (const ext of EXTENSIONS) {
     const indexFile = join(basePath, `index${ext}`)
-    if (existsSync(indexFile)) return indexFile
+    if (fileExists(indexFile)) return indexFile
   }
 
   return null
@@ -311,4 +332,5 @@ export function clearResolverCache() {
   cachedGoModule = null
   cachedGoModRoot = null
   resolveCache = null
+  dirCache = null
 }

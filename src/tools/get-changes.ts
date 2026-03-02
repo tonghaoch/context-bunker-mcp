@@ -50,8 +50,10 @@ export function getChangesSinceLastSession(db: DB, _projectRoot: string) {
     const current = currentFiles.get(path)
     if (current && current.hash !== getHash(entry)) {
       const oldSyms = getSymbols(entry)
-      const symbolsAdded = oldSyms ? current.symbols.filter(s => !oldSyms.includes(s)) : current.symbols
-      const symbolsRemoved = oldSyms ? oldSyms.filter(s => !current.symbols.includes(s)) : []
+      const oldSet = oldSyms ? new Set(oldSyms) : null
+      const newSet = new Set(current.symbols)
+      const symbolsAdded = oldSet ? current.symbols.filter(s => !oldSet.has(s)) : current.symbols
+      const symbolsRemoved = oldSyms ? oldSyms.filter(s => !newSet.has(s)) : []
       modified.push({ file: path, symbolsAdded, symbolsRemoved })
     }
   }

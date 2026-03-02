@@ -191,10 +191,6 @@ export function insertCall(db: DB, callerSymbolId: number, calleeName: string, f
   ).run(callerSymbolId, calleeName, fileId, line)
 }
 
-export function deleteCallsByFile(db: DB, fileId: number) {
-  db.prepare('DELETE FROM calls WHERE file_id = ?').run(fileId)
-}
-
 // Refs (identifier references per file)
 export function insertRef(db: DB, fileId: number, name: string) {
   db.prepare('INSERT OR IGNORE INTO refs (file_id, name) VALUES (?, ?)').run(fileId, name)

@@ -73,11 +73,11 @@ CREATE TABLE IF NOT EXISTS sessions (
   file_snapshot TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(name);
+CREATE INDEX IF NOT EXISTS idx_symbols_name_file ON symbols(name, file_id);
 CREATE INDEX IF NOT EXISTS idx_symbols_kind ON symbols(kind);
-CREATE INDEX IF NOT EXISTS idx_symbols_file ON symbols(file_id);
+CREATE INDEX IF NOT EXISTS idx_symbols_file_exported ON symbols(file_id, is_exported);
 CREATE INDEX IF NOT EXISTS idx_imports_file ON imports(file_id);
-CREATE INDEX IF NOT EXISTS idx_imports_from ON imports(from_path);
+CREATE INDEX IF NOT EXISTS idx_imports_from_symbol ON imports(from_path, symbol, is_external);
 CREATE INDEX IF NOT EXISTS idx_exports_file ON exports(file_id);
 CREATE INDEX IF NOT EXISTS idx_exports_symbol ON exports(symbol);
 CREATE TABLE IF NOT EXISTS refs (

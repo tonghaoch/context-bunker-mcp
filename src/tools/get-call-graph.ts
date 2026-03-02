@@ -1,5 +1,5 @@
 import type { DB } from '../store/db.js'
-import { findSymbolsByName, getCallsBySymbol } from '../store/queries.js'
+import { findSymbolsByName } from '../store/queries.js'
 
 interface CallNode {
   name: string
@@ -18,42 +18,46 @@ export function getCallGraph(db: DB, functionName: string, file?: string, maxDep
   }
 
   const sym = funcSyms[0]
-  const visited = new Set<string>()
 
-  // Batch resolve: given a list of callee names, resolve them all in one query
-  function batchResolveCallees(names: string[]): Map<string, { id: number; name: string; file_path: string; kind: string }> {
-    const result = new Map<string, { id: number; name: string; file_path: string; kind: string }>()
-    if (names.length === 0) return result
-    const unique = [...new Set(names)]
-    const placeholders = unique.map(() => '?').join(',')
-    const rows = db.prepare(
-      `SELECT s.id, s.name, s.kind, f.path as file_path
-       FROM symbols s JOIN files f ON s.file_id = f.id
-       WHERE s.name IN (${placeholders}) AND (s.kind = 'function' OR s.kind = 'variable')
-       ORDER BY s.name`
-    ).all(...unique) as { id: number; name: string; kind: string; file_path: string }[]
-    for (const row of rows) {
-      if (!result.has(row.name)) result.set(row.name, row)
-    }
-    return result
+  // Preload all calls and symbols in 2 queries instead of 2 per BFS node
+  const allCalls = db.prepare(
+    'SELECT caller_symbol_id, callee_name, line FROM calls'
+  ).all() as { caller_symbol_id: number; callee_name: string; line: number }[]
+
+  const allFuncSymbols = db.prepare(
+    `SELECT s.id, s.name, s.kind, f.path as file_path
+     FROM symbols s JOIN files f ON s.file_id = f.id
+     WHERE s.kind = 'function' OR s.kind = 'variable'`
+  ).all() as { id: number; name: string; kind: string; file_path: string }[]
+
+  // Build lookup maps
+  const callsByCaller = new Map<number, { callee_name: string; line: number }[]>()
+  for (const c of allCalls) {
+    let list = callsByCaller.get(c.caller_symbol_id)
+    if (!list) { list = []; callsByCaller.set(c.caller_symbol_id, list) }
+    list.push({ callee_name: c.callee_name, line: c.line })
   }
+
+  // name -> first matching symbol (same as original behavior)
+  const symbolByName = new Map<string, { id: number; name: string; file_path: string }>()
+  for (const s of allFuncSymbols) {
+    if (!symbolByName.has(s.name)) symbolByName.set(s.name, s)
+  }
+
+  const visited = new Set<number>()
 
   function buildTree(symbolId: number, name: string, filePath: string, depth: number): CallNode {
     const node: CallNode = { name, file: filePath, line: 0, children: [] }
     if (depth >= maxDepth) return node
 
-    const key = `${symbolId}`
-    if (visited.has(key)) return node
-    visited.add(key)
+    if (visited.has(symbolId)) return node
+    visited.add(symbolId)
 
-    const calls = getCallsBySymbol(db, symbolId)
+    const calls = callsByCaller.get(symbolId) ?? []
     if (calls.length === 0) return node
 
-    // Batch resolve all callee names at once
-    const calleeMap = batchResolveCallees(calls.map(c => c.callee_name))
-
     for (const call of calls) {
-      const calleeSym = calleeMap.get(call.callee_name)
+      const calleeSym = symbolByName.get(call.callee_name)
       const calleeFile = calleeSym ? calleeSym.file_path : '(unresolved)'
       const child: CallNode = { name: call.callee_name, file: calleeFile, line: call.line, children: [] }
 

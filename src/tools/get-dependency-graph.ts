@@ -1,5 +1,5 @@
 import type { DB } from '../store/db.js'
-import { getFile, getImportsByFile, getImportersOf } from '../store/queries.js'
+import { getFile } from '../store/queries.js'
 import { normalizePath } from '../utils/paths.js'
 
 interface GraphNode {
@@ -19,31 +19,50 @@ export function getDependencyGraph(
   const root = getFile(db, filePath)
   if (!root) return `File not found in index: ${filePath}`
 
+  // Preload all edges in 1 query instead of N+1 per BFS node
+  const allImports = db.prepare(
+    `SELECT i.symbol, i.from_path, i.is_external, f.path as file_path
+     FROM imports i JOIN files f ON i.file_id = f.id
+     WHERE i.is_external = 0`
+  ).all() as { symbol: string; from_path: string; is_external: number; file_path: string }[]
+
+  // Build lookup maps for both directions
+  // dependencies: file_path -> [{from_path, symbol}]  (what does this file import?)
+  // dependents:   from_path -> [{file_path, symbol}]  (who imports this path?)
+  const depsByFile = new Map<string, { from_path: string; symbol: string }[]>()
+  const importersByPath = new Map<string, { file_path: string; symbol: string }[]>()
+
+  for (const imp of allImports) {
+    let deps = depsByFile.get(imp.file_path)
+    if (!deps) { deps = []; depsByFile.set(imp.file_path, deps) }
+    deps.push({ from_path: imp.from_path, symbol: imp.symbol })
+
+    let importers = importersByPath.get(imp.from_path)
+    if (!importers) { importers = []; importersByPath.set(imp.from_path, importers) }
+    importers.push({ file_path: imp.file_path, symbol: imp.symbol })
+  }
+
   const visited = new Set<string>()
   const result: GraphNode[] = []
 
-  // BFS
+  // BFS with index pointer instead of queue.shift()
   const queue: { file: string; depth: number; via?: string }[] = [{ file: filePath, depth: 0 }]
   visited.add(filePath)
+  let qi = 0
 
-  while (queue.length > 0) {
-    const current = queue.shift()!
+  while (qi < queue.length) {
+    const current = queue[qi++]
     if (current.depth > maxDepth) continue
 
-    const fileRow = getFile(db, current.file)
-    if (!fileRow) continue
-
     if (direction === 'dependencies') {
-      // What does this file import?
-      const imports = getImportsByFile(db, fileRow.id)
-      const internalImports = imports.filter(i => !i.is_external)
-      const importPaths = [...new Set(internalImports.map(i => i.from_path))]
+      const imports = depsByFile.get(current.file) ?? []
+      const importPaths = [...new Set(imports.map(i => i.from_path))]
 
       if (current.depth > 0) {
         result.push({
           file: current.file,
           depth: current.depth,
-          imports: internalImports.map(i => i.symbol),
+          imports: imports.map(i => i.symbol),
           via: current.via,
         })
       }
@@ -55,9 +74,7 @@ export function getDependencyGraph(
         }
       }
     } else {
-      // What files import this file?
-      const importers = getImportersOf(db, current.file)
-      // Group by file
+      const importers = importersByPath.get(current.file) ?? []
       const byFile = new Map<string, string[]>()
       for (const imp of importers) {
         const existing = byFile.get(imp.file_path) ?? []

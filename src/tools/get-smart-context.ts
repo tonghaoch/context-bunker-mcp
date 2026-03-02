@@ -81,8 +81,9 @@ export function getSmartContext(db: DB, filePath: string) {
 
   if (exports.length > 0) {
     lines.push('Exports:')
+    const symbolsByName = new Map(symbols.map(s => [s.name, s]))
     for (const e of exports) {
-      const sym = symbols.find(s => s.name === e.symbol)
+      const sym = symbolsByName.get(e.symbol)
       const sig = sym?.signature ? ` ${sym.signature}` : ''
       const reex = e.is_reexport ? ` (re-export from ${e.original_path})` : ''
       lines.push(`  ${e.kind} ${e.symbol}${sig}${reex}`)

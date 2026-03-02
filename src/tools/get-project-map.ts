@@ -3,6 +3,8 @@ import type { DB } from '../store/db.js'
 interface DirEntry {
   files: { path: string; exports: string[] }[]
   subdirs: Map<string, DirEntry>
+  fileCount: number
+  exportCount: number
 }
 
 export function getProjectMap(db: DB, maxDepth: number = 3) {
@@ -28,7 +30,7 @@ export function getProjectMap(db: DB, maxDepth: number = 3) {
   }
 
   // Build directory tree
-  const root: DirEntry = { files: [], subdirs: new Map() }
+  const root: DirEntry = { files: [], subdirs: new Map(), fileCount: 0, exportCount: 0 }
 
   for (const [filePath, exportNames] of fileMap) {
     const parts = filePath.replace(/\\/g, '/').split('/')
@@ -36,22 +38,32 @@ export function getProjectMap(db: DB, maxDepth: number = 3) {
     for (let i = 0; i < parts.length - 1; i++) {
       const dir = parts[i]
       if (!current.subdirs.has(dir)) {
-        current.subdirs.set(dir, { files: [], subdirs: new Map() })
+        current.subdirs.set(dir, { files: [], subdirs: new Map(), fileCount: 0, exportCount: 0 })
       }
       current = current.subdirs.get(dir)!
     }
     current.files.push({ path: parts[parts.length - 1], exports: exportNames })
   }
 
+  // Precompute counts bottom-up in a single pass (avoids O(N*D) repeated traversals)
+  function precomputeCounts(entry: DirEntry): void {
+    entry.fileCount = entry.files.length
+    entry.exportCount = entry.files.reduce((sum, f) => sum + f.exports.length, 0)
+    for (const sub of entry.subdirs.values()) {
+      precomputeCounts(sub)
+      entry.fileCount += sub.fileCount
+      entry.exportCount += sub.exportCount
+    }
+  }
+  precomputeCounts(root)
+
   // Format as text tree
   function formatDir(entry: DirEntry, prefix: string, dirName: string, depth: number): string[] {
     if (depth > maxDepth) return [`${prefix}${dirName}/ ...`]
 
     const lines: string[] = []
-    const fileCount = countFiles(entry)
-    const exportCount = countExports(entry)
 
-    lines.push(`${prefix}${dirName}/ (${fileCount} files, ${exportCount} exports)`)
+    lines.push(`${prefix}${dirName}/ (${entry.fileCount} files, ${entry.exportCount} exports)`)
 
     for (const file of entry.files) {
       const exps = file.exports.length > 0
@@ -66,18 +78,6 @@ export function getProjectMap(db: DB, maxDepth: number = 3) {
     }
 
     return lines
-  }
-
-  function countFiles(entry: DirEntry): number {
-    let n = entry.files.length
-    for (const sub of entry.subdirs.values()) n += countFiles(sub)
-    return n
-  }
-
-  function countExports(entry: DirEntry): number {
-    let n = entry.files.reduce((sum, f) => sum + f.exports.length, 0)
-    for (const sub of entry.subdirs.values()) n += countExports(sub)
-    return n
   }
 
   const lines: string[] = [`Project map (${fileMap.size} files):\n`]

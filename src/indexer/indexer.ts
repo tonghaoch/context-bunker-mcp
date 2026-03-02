@@ -62,23 +62,22 @@ export function matchesAny(patterns: string[], path: string): boolean {
   return patterns.some(p => matchGlob(p, path))
 }
 
-function walkDir(dir: string): string[] {
-  const files: string[] = []
+function walkDir(dir: string, acc: string[] = []): string[] {
   try {
     const entries = readdirSync(dir, { withFileTypes: true })
     for (const entry of entries) {
       if (entry.name.startsWith('.') && entry.name !== '.') continue
       const fullPath = join(dir, entry.name)
       if (entry.isDirectory()) {
-        if (!IGNORED_DIRS.has(entry.name)) files.push(...walkDir(fullPath))
+        if (!IGNORED_DIRS.has(entry.name)) walkDir(fullPath, acc)
       } else if (entry.isFile()) {
         if (isSupportedFile(entry.name) && !IGNORED_SUFFIXES.some(s => entry.name.endsWith(s))) {
-          files.push(fullPath)
+          acc.push(fullPath)
         }
       }
     }
   } catch { /* permission error, skip */ }
-  return files
+  return acc
 }
 
 interface IndexResult {
@@ -232,28 +231,22 @@ export async function indexProject(db: DB, projectRoot: string, log?: (...args: 
   await initParser()
 
   const allFiles = walkDir(projectRoot)
-  // Filter by configured languages
+  // Single-pass filter: language + include + exclude (avoids redundant relative() calls)
   const allowedLangs = config?.languages ? new Set(config.languages) : SUPPORTED_LANGUAGES
-  let filteredFiles = allFiles.filter(f => {
+  const hasInclude = config?.include && config.include.length > 0
+  const hasExclude = config?.exclude && config.exclude.length > 0
+
+  const filteredFiles = allFiles.filter(f => {
     const lang = getLanguageName(f)
-    return !lang || allowedLangs.has(lang)
+    if (lang && !allowedLangs.has(lang)) return false
+
+    if (hasInclude || hasExclude) {
+      const relPath = relative(projectRoot, f).replace(/\\/g, '/')
+      if (hasInclude && !config!.include.some(prefix => relPath.startsWith(prefix))) return false
+      if (hasExclude && matchesAny(config!.exclude, relPath)) return false
+    }
+    return true
   })
-
-  // Apply include filter (file must be under at least one include prefix)
-  if (config?.include && config.include.length > 0) {
-    filteredFiles = filteredFiles.filter(f => {
-      const relPath = relative(projectRoot, f).replace(/\\/g, '/')
-      return config.include.some(prefix => relPath.startsWith(prefix))
-    })
-  }
-
-  // Apply exclude filter (file must not match any exclude pattern)
-  if (config?.exclude && config.exclude.length > 0) {
-    filteredFiles = filteredFiles.filter(f => {
-      const relPath = relative(projectRoot, f).replace(/\\/g, '/')
-      return !matchesAny(config.exclude, relPath)
-    })
-  }
 
   log?.(`Found ${filteredFiles.length} files to index (${allFiles.length - filteredFiles.length} filtered by config)`)
 
