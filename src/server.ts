@@ -224,7 +224,7 @@ export function createServer(state: ServerState) {
       direction: z.enum(['dependencies', 'dependents']).default('dependents').describe('"dependents" = files that import this, "dependencies" = files this imports'),
       depth: z.number().min(1).max(10).default(3).describe('How many levels deep to traverse'),
     },
-    safeTool('get_dependency_graph', async ({ file_path, direction, depth }: { file_path: string, direction: string, depth: number }) => {
+    safeTool('get_dependency_graph', async ({ file_path, direction, depth }: { file_path: string, direction: 'dependencies' | 'dependents', depth: number }) => {
       const err = requireProject()
       if (err) return text(err)
       return text(getDependencyGraph(state.db, file_path, direction, depth))
