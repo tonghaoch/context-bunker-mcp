@@ -277,3 +277,36 @@ describe('migration invalidates file hashes', () => {
     db2.close()
   })
 })
+
+// ── Fix 8: Default Parameter Values and Shorthand Properties in Refs ──
+
+describe('extractRefs bug fixes', () => {
+  it('does not flag symbols used only as default parameter values', async () => {
+    const dbDir = tmpDir('refs-default-param')
+    const db = await openDatabase(join(dbDir, 'index.db'))
+    await indexProject(db, TS_FIXTURE)
+
+    const unused = findUnusedCode(db)
+    // DEFAULT_ROLE is used as `role: string = DEFAULT_ROLE` — a default param value
+    expect(unused).not.toContain('DEFAULT_ROLE')
+    // Genuinely unused symbols should still be detected
+    expect(unused).toContain('deadInternalHelper')
+    expect(unused).toContain('UNUSED_CONST')
+
+    db.close()
+  })
+
+  it('does not flag symbols used only in shorthand properties', async () => {
+    const dbDir = tmpDir('refs-shorthand-prop')
+    const db = await openDatabase(join(dbDir, 'index.db'))
+    await indexProject(db, TS_FIXTURE)
+
+    const unused = findUnusedCode(db)
+    // defaultGreeting is used as `{ defaultGreeting }` — a shorthand property
+    expect(unused).not.toContain('defaultGreeting')
+    // Genuinely unused symbols should still be detected
+    expect(unused).toContain('deadInternalHelper')
+
+    db.close()
+  })
+})

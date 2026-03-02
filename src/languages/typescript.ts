@@ -291,7 +291,7 @@ const DEFINITION_PARENTS = new Set([
 function extractRefs(root: SyntaxNode): string[] {
   const refs = new Set<string>()
   function walk(node: SyntaxNode) {
-    if (node.type === 'identifier' || node.type === 'type_identifier') {
+    if (node.type === 'identifier' || node.type === 'type_identifier' || node.type === 'shorthand_property_identifier') {
       const parent = node.parent
       if (parent) {
         // Skip if this identifier IS the name being defined
@@ -302,8 +302,14 @@ function extractRefs(root: SyntaxNode): string[] {
           const nameNode = findChild(parent, 'identifier')
           if (nameNode && nameNode.startIndex === node.startIndex) { /* definition name — skip */ }
           else refs.add(node.text)
-        } else if (parent.type === 'formal_parameters' || parent.type === 'required_parameter' || parent.type === 'optional_parameter') {
-          // Parameter names are definitions — skip
+        } else if (parent.type === 'formal_parameters') {
+          // Parameter names at the formal_parameters level are definitions — skip
+        } else if (parent.type === 'required_parameter' || parent.type === 'optional_parameter') {
+          // First identifier child is the parameter name (definition),
+          // but subsequent identifiers are default value references
+          const nameNode = findChild(parent, 'identifier')
+          if (nameNode && nameNode.startIndex === node.startIndex) { /* definition name — skip */ }
+          else refs.add(node.text)
         } else {
           refs.add(node.text)
         }
