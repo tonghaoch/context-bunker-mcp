@@ -5,7 +5,10 @@ interface WatcherCallbacks {
   onAdd(filePath: string): void | Promise<void>
   onChange(filePath: string): void | Promise<void>
   onUnlink(filePath: string): void | Promise<void>
+  /** Called when a watcher system error occurs (e.g., ENOSPC). Watcher may stop working. */
   onError?(err: Error): void
+  /** Called when an async callback (onAdd/onChange/onUnlink) rejects. Watcher keeps running. */
+  onCallbackError?(err: Error, filePath: string, event: string): void
 }
 
 const IGNORED = [
@@ -52,23 +55,23 @@ export function startWatcher(projectRoot: string, callbacks: WatcherCallbacks) {
     awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 50 },
   })
 
-  const handleError = (e: unknown) => {
-    callbacks.onError?.(e instanceof Error ? e : new Error(String(e)))
-  }
+  const toError = (e: unknown) => e instanceof Error ? e : new Error(String(e))
 
   watcher.on('add', (path) => {
-    if (isSupportedFile(path)) Promise.resolve(callbacks.onAdd(path)).catch(handleError)
+    if (isSupportedFile(path)) Promise.resolve(callbacks.onAdd(path)).catch(e => callbacks.onCallbackError?.(toError(e), path, 'add'))
   })
 
   watcher.on('change', (path) => {
-    if (isSupportedFile(path)) Promise.resolve(callbacks.onChange(path)).catch(handleError)
+    if (isSupportedFile(path)) Promise.resolve(callbacks.onChange(path)).catch(e => callbacks.onCallbackError?.(toError(e), path, 'change'))
   })
 
   watcher.on('unlink', (path) => {
-    if (isSupportedFile(path)) Promise.resolve(callbacks.onUnlink(path)).catch(handleError)
+    if (isSupportedFile(path)) Promise.resolve(callbacks.onUnlink(path)).catch(e => callbacks.onCallbackError?.(toError(e), path, 'unlink'))
   })
 
-  watcher.on('error', handleError)
+  watcher.on('error', (err: unknown) => {
+    callbacks.onError?.(toError(err))
+  })
 
   return {
     close: () => watcher.close(),

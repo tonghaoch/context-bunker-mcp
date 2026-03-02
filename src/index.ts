@@ -118,7 +118,8 @@ async function main() {
           onAdd: async (path) => { log('File added:', path); await indexFile(state.db, path, projectRoot, config) },
           onChange: async (path) => { log('File changed:', path); await indexFile(state.db, path, projectRoot, config) },
           onUnlink: async (path) => { log('File removed:', path); await removeFile(state.db, path, projectRoot) },
-          onError: (err) => { logger.warn('File watcher error (watching disabled):', err.message); state.stopWatcher = undefined },
+          onError: (err) => { logger.error('File watcher system error (watching disabled):', err); state.stopWatcher = undefined },
+          onCallbackError: (err, path, event) => { logger.error(`Watcher ${event} callback failed for ${path}:`, err) },
         })
         state.stopWatcher = () => watcher.close()
         log('File watcher started')
