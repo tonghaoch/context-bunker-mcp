@@ -18,12 +18,18 @@ interface Statement {
 
 /** Wrap a DB to cache prepared statements — avoids re-compiling SQL on every call */
 function withStatementCache(db: DB): DB {
+  const MAX_STMTS = 200
   const cache = new Map<string, Statement>()
   return {
     exec: (sql) => db.exec(sql),
     prepare: (sql) => {
       let stmt = cache.get(sql)
       if (!stmt) {
+        // Evict oldest when cache is full (dynamic SQL like IN(?,?,?) creates many variants)
+        if (cache.size >= MAX_STMTS) {
+          const oldest = cache.keys().next().value!
+          cache.delete(oldest)
+        }
         stmt = db.prepare(sql)
         cache.set(sql, stmt)
       }

@@ -58,7 +58,10 @@ export function createServer(state: ServerState) {
         const t0 = performance.now()
         try {
           const result = await handler(args)
-          logger.info(`Tool done: ${name} (${(performance.now() - t0).toFixed(0)}ms)`)
+          const ms = (performance.now() - t0).toFixed(0)
+          const mem = process.memoryUsage()
+          logger.info(`Tool done: ${name} (${ms}ms) rss=${(mem.rss / 1048576).toFixed(0)}MB`)
+          if (global.gc) global.gc()
           return result
         } catch (err) {
           logger.error(
@@ -115,6 +118,7 @@ export function createServer(state: ServerState) {
     const sr = startSession(state.db)
     state.sessionId = Number(sr.lastInsertRowid)
 
+    if (global.gc) global.gc()
     const mem = process.memoryUsage()
     logger.info(`Memory after switchProject: rss=${(mem.rss / 1048576).toFixed(0)}MB heap=${(mem.heapUsed / 1048576).toFixed(0)}MB`)
 
