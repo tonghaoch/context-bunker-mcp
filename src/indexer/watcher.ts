@@ -86,6 +86,7 @@ export function startWatcher(projectRoot: string, callbacks: WatcherCallbacks) {
     persistent: true,
     ignoreInitial: true, // we do full index on startup
     awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 50 },
+    depth: 20, // limit depth to avoid excessive inotify watches in large projects
   })
 
   watcher.on('add', (path) => {

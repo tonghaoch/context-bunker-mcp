@@ -42,8 +42,8 @@ async function openBunSqlite(dbPath: string): Promise<DB> {
   raw.exec('PRAGMA journal_mode=WAL')
   raw.exec('PRAGMA foreign_keys=ON')
   raw.exec('PRAGMA synchronous=NORMAL')
-  raw.exec('PRAGMA cache_size=-64000')
-  raw.exec('PRAGMA mmap_size=268435456')
+  raw.exec('PRAGMA cache_size=-8000')
+  raw.exec('PRAGMA mmap_size=67108864')
   raw.exec('PRAGMA temp_store=MEMORY')
   return {
     exec: (sql: string) => raw.exec(sql),
@@ -67,8 +67,8 @@ async function openBetterSqlite3(dbPath: string): Promise<DB> {
   raw.pragma('journal_mode=WAL')
   raw.pragma('foreign_keys=ON')
   raw.pragma('synchronous=NORMAL')
-  raw.pragma('cache_size=-64000')
-  raw.pragma('mmap_size=268435456')
+  raw.pragma('cache_size=-8000')
+  raw.pragma('mmap_size=67108864')
   raw.pragma('temp_store=MEMORY')
   return {
     exec: (sql: string) => raw.exec(sql),

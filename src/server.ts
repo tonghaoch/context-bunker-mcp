@@ -55,8 +55,11 @@ export function createServer(state: ServerState) {
     return (args: A) => {
       const job = queue.then(async () => {
         logger.info(`Tool call: ${name}`, args)
+        const t0 = performance.now()
         try {
-          return await handler(args)
+          const result = await handler(args)
+          logger.info(`Tool done: ${name} (${(performance.now() - t0).toFixed(0)}ms)`)
+          return result
         } catch (err) {
           logger.error(
             `Tool ${name} failed\n` +
@@ -112,6 +115,9 @@ export function createServer(state: ServerState) {
     const sr = startSession(state.db)
     state.sessionId = Number(sr.lastInsertRowid)
 
+    const mem = process.memoryUsage()
+    logger.info(`Memory after switchProject: rss=${(mem.rss / 1048576).toFixed(0)}MB heap=${(mem.heapUsed / 1048576).toFixed(0)}MB`)
+
     return result
   }
 
@@ -149,6 +155,9 @@ export function createServer(state: ServerState) {
       if (!existsSync(absPath)) return text(`Not found: ${absPath}`)
 
       const root = findNearestProjectRoot(absPath)
+      if (root === state.projectRoot && state.db) {
+        return text(`Project already set: ${root}\n\nAll tools are ready. Try get_status or get_project_map.`)
+      }
       const result = await switchProject(root)
 
       return text([
