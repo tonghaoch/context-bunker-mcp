@@ -10,6 +10,7 @@ import { startSession, endSession, getStats } from './store/queries.js'
 import { buildFileSnapshot } from './tools/get-changes.js'
 import { loadConfig, initConfig, getDbPath } from './config.js'
 import { createLogger } from './logger.js'
+import { findNearestProjectRoot } from './utils/monorepo.js'
 
 // ── CLI Args ──
 const args = process.argv.slice(2)
@@ -133,7 +134,7 @@ async function main() {
   // If project path given, index it upfront
   if (projectArg) {
     try {
-      const projectRoot = resolve(projectArg)
+      const projectRoot = findNearestProjectRoot(resolve(projectArg))
       log('Project root:', projectRoot)
 
       const config = loadConfig(projectRoot)

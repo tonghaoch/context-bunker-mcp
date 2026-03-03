@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
-import { resolve } from 'node:path'
+import { resolve, relative, isAbsolute } from 'node:path'
 import { existsSync } from 'node:fs'
 import type { DB } from './store/db.js'
 import { openDatabase } from './store/db.js'
@@ -23,6 +23,7 @@ import { searchByPattern } from './tools/search-by-pattern.js'
 import { getFileSummary } from './tools/get-file-summary.js'
 import { searchCode } from './tools/search-code.js'
 import { findUnusedCode } from './tools/find-unused-code.js'
+import { findNearestProjectRoot } from './utils/monorepo.js'
 import type { Logger } from './logger.js'
 
 // Mutable state — allows set_project to swap project at runtime
@@ -35,21 +36,16 @@ export interface ServerState {
   logger: Logger
 }
 
+const PATH_DESC = 'Absolute path to any file/directory in the project. Auto-detects and sets the project root. In monorepos, scopes to the nearest package.'
+
 export function createServer(state: ServerState) {
   const { logger } = state
   const server = new McpServer({
     name: 'context-bunker',
-    version: '0.1.4',
+    version: '0.1.5',
   })
 
   const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] })
-
-  const requireProject = () => {
-    if (!state.projectRoot || !state.db) {
-      return 'No project set. Call set_project first with the path to your project.'
-    }
-    return null
-  }
 
   // Serial queue — process tool calls one at a time to avoid stdout contention
   let queue: Promise<unknown> = Promise.resolve()
@@ -78,61 +74,85 @@ export function createServer(state: ServerState) {
     }
   }
 
+  // ── Shared helpers ──
+
+  /** Teardown current project, open new DB, index, start watcher + session */
+  async function switchProject(root: string) {
+    if (state.stopWatcher) {
+      await state.stopWatcher()
+      state.stopWatcher = undefined
+    }
+    if (state.sessionId != null && state.db) {
+      endSession(state.db, state.sessionId, buildFileSnapshot(state.db))
+      state.sessionId = undefined
+    }
+    if (state.db && state.projectRoot !== root) {
+      try { state.db.close() } catch { /* ignore */ }
+    }
+
+    await initParser()
+    const config = loadConfig(root)
+    state.config = config
+
+    const dbPath = getDbPath(root, config.storage)
+    state.db = await openDatabase(dbPath)
+    state.projectRoot = root
+
+    const result = await indexProject(state.db, root, undefined, config)
+
+    const watcher = startWatcher(root, {
+      onAdd: async (path) => { await indexFile(state.db, path, root, config) },
+      onChange: async (path) => { await indexFile(state.db, path, root, config) },
+      onUnlink: async (path) => { await removeFile(state.db, path, root) },
+      onError: () => { state.stopWatcher = undefined },
+      onCallbackError: (err, path, event) => { logger.error(`Watcher ${event} callback failed for ${path}:`, err) },
+    })
+    state.stopWatcher = () => watcher.close()
+
+    const sr = startSession(state.db)
+    state.sessionId = Number(sr.lastInsertRowid)
+
+    return result
+  }
+
+  /**
+   * Auto-detect project from an absolute path and switch if needed.
+   * Returns error string if project cannot be determined, null on success.
+   */
+  async function ensureProject(inputPath?: string): Promise<string | null> {
+    if (inputPath && isAbsolute(inputPath)) {
+      const root = findNearestProjectRoot(inputPath)
+      if (root !== state.projectRoot) await switchProject(root)
+      return null
+    }
+    if (!state.projectRoot || !state.db) {
+      return 'No project set. Provide an absolute path or call set_project first.'
+    }
+    return null
+  }
+
+  /** Convert absolute file path to project-relative, pass through relative paths */
+  function toRelative(filePath: string): string {
+    if (isAbsolute(filePath)) return relative(state.projectRoot, filePath).replace(/\\/g, '/')
+    return filePath
+  }
+
   // ── set_project ──
   server.tool(
     'set_project',
-    'Set the project directory to index and analyze. Call this first if no project was specified at startup. Re-indexes automatically.',
+    'Set the project directory to index and analyze. Accepts any absolute path (file or directory) — auto-detects the nearest project root. In monorepos, automatically scopes to the specific package.',
     {
-      path: z.string().describe('Absolute path to the project root directory'),
+      path: z.string().describe('Absolute path to any file or directory in the project. The nearest project root is auto-detected (e.g. passing a monorepo sub-package path scopes to that package).'),
     },
     safeTool('set_project', async ({ path: projectPath }: { path: string }) => {
       const absPath = resolve(projectPath)
-      if (!existsSync(absPath)) return text(`Directory not found: ${absPath}`)
+      if (!existsSync(absPath)) return text(`Not found: ${absPath}`)
 
-      // Stop old watcher and end old session before switching
-      if (state.stopWatcher) {
-        await state.stopWatcher()
-        state.stopWatcher = undefined
-      }
-      if (state.sessionId != null && state.db) {
-        endSession(state.db, state.sessionId, buildFileSnapshot(state.db))
-        state.sessionId = undefined
-      }
-
-      // Close old DB if switching projects
-      if (state.db && state.projectRoot !== absPath) {
-        try { state.db.close() } catch { /* ignore */ }
-      }
-
-      // Load config first to determine storage location
-      await initParser()
-      const config = loadConfig(absPath)
-      state.config = config
-
-      // Open new DB
-      const dbPath = getDbPath(absPath, config.storage)
-      state.db = await openDatabase(dbPath)
-      state.projectRoot = absPath
-
-      // Index
-      const result = await indexProject(state.db, absPath, undefined, config)
-
-      // Start new watcher
-      const watcher = startWatcher(absPath, {
-        onAdd: async (path) => { await indexFile(state.db, path, absPath, config) },
-        onChange: async (path) => { await indexFile(state.db, path, absPath, config) },
-        onUnlink: async (path) => { await removeFile(state.db, path, absPath) },
-        onError: () => { state.stopWatcher = undefined },
-        onCallbackError: (err, path, event) => { logger.error(`Watcher ${event} callback failed for ${path}:`, err) },
-      })
-      state.stopWatcher = () => watcher.close()
-
-      // Start session
-      const sr = startSession(state.db)
-      state.sessionId = Number(sr.lastInsertRowid)
+      const root = findNearestProjectRoot(absPath)
+      const result = await switchProject(root)
 
       return text([
-        `Project set: ${absPath}`,
+        `Project set: ${root}`,
         `Indexed: ${result.indexed} files, ${result.skipped} unchanged, ${result.removed} removed (${result.timeMs}ms)`,
         '',
         'All tools are now ready. Try get_status or get_project_map.',
@@ -144,9 +164,11 @@ export function createServer(state: ServerState) {
   server.tool(
     'get_status',
     'Get index health, stats, and current project info.',
-    {},
-    safeTool('get_status', async () => {
-      const err = requireProject()
+    {
+      path: z.string().optional().describe(PATH_DESC),
+    },
+    safeTool('get_status', async ({ path }: { path?: string }) => {
+      const err = await ensureProject(path)
       if (err) return text(err)
       const stats = getStats(state.db)
       return text([
@@ -165,15 +187,16 @@ export function createServer(state: ServerState) {
   server.tool(
     'reindex',
     'Force re-index of the codebase or a single file.',
-    { file_path: z.string().optional().describe('Relative path to a specific file. Omit for full re-index.') },
+    { file_path: z.string().optional().describe('Path to a specific file (absolute or relative). Omit for full re-index. Absolute paths auto-detect the project.') },
     safeTool('reindex', async ({ file_path }: { file_path?: string }) => {
-      const err = requireProject()
+      const err = await ensureProject(file_path)
       if (err) return text(err)
       if (file_path) {
-        const fullPath = resolve(state.projectRoot, file_path)
-        invalidateFileHash(state.db, file_path)
+        const relPath = toRelative(file_path)
+        const fullPath = resolve(state.projectRoot, relPath)
+        invalidateFileHash(state.db, relPath)
         const changed = await indexFile(state.db, fullPath, state.projectRoot, state.config)
-        return text(changed ? `Re-indexed: ${file_path}` : `No changes: ${file_path}`)
+        return text(changed ? `Re-indexed: ${relPath}` : `No changes: ${relPath}`)
       }
       invalidateAllFileHashes(state.db)
       const result = await indexProject(state.db, state.projectRoot, undefined, state.config)
@@ -189,9 +212,10 @@ export function createServer(state: ServerState) {
       query: z.string().describe('Symbol name to search for. Supports * wildcards (e.g. "handle*", "*Service")'),
       kind: z.enum(['function', 'class', 'interface', 'type', 'enum', 'variable']).optional().describe('Filter by symbol kind'),
       scope: z.string().optional().describe('Filter by file path prefix (e.g. "src/routes/")'),
+      path: z.string().optional().describe(PATH_DESC),
     },
-    safeTool('find_symbol', async ({ query, kind, scope }: { query: string, kind?: string, scope?: string }) => {
-      const err = requireProject()
+    safeTool('find_symbol', async ({ query, kind, scope, path }: { query: string, kind?: string, scope?: string, path?: string }) => {
+      const err = await ensureProject(path)
       if (err) return text(err)
       return text(findSymbol(state.db, query, kind, scope))
     })
@@ -203,12 +227,13 @@ export function createServer(state: ServerState) {
     'Find where a symbol is used across the codebase — imports, calls, and type references.',
     {
       symbol: z.string().describe('Symbol name to find references for'),
-      file: z.string().optional().describe('Limit to references of the symbol defined in this file'),
+      file: z.string().optional().describe('Limit to references of the symbol defined in this file (absolute or relative path)'),
+      path: z.string().optional().describe(PATH_DESC),
     },
-    safeTool('find_references', async ({ symbol, file }: { symbol: string, file?: string }) => {
-      const err = requireProject()
+    safeTool('find_references', async ({ symbol, file, path }: { symbol: string, file?: string, path?: string }) => {
+      const err = await ensureProject(file ?? path)
       if (err) return text(err)
-      return text(findReferences(state.db, symbol, file))
+      return text(findReferences(state.db, symbol, file ? toRelative(file) : undefined))
     })
   )
 
@@ -217,12 +242,12 @@ export function createServer(state: ServerState) {
     'get_smart_context',
     'Get full context for a file in one call: exports, imports with signatures, dependents, test file, and dependencies. Replaces 8-16 manual Read/Grep calls.',
     {
-      file_path: z.string().describe('Relative path to the file (e.g. "src/auth/middleware.ts")'),
+      file_path: z.string().describe('Path to the file (absolute or relative). Absolute paths auto-detect the project.'),
     },
     safeTool('get_smart_context', async ({ file_path }: { file_path: string }) => {
-      const err = requireProject()
+      const err = await ensureProject(file_path)
       if (err) return text(err)
-      return text(getSmartContext(state.db, file_path))
+      return text(getSmartContext(state.db, toRelative(file_path)))
     })
   )
 
@@ -231,14 +256,14 @@ export function createServer(state: ServerState) {
     'get_dependency_graph',
     'Get the transitive import graph for a file. "dependents" = what breaks if I change this. "dependencies" = what this file needs.',
     {
-      file_path: z.string().describe('Relative path to the file'),
+      file_path: z.string().describe('Path to the file (absolute or relative). Absolute paths auto-detect the project.'),
       direction: z.enum(['dependencies', 'dependents']).default('dependents').describe('"dependents" = files that import this, "dependencies" = files this imports'),
       depth: z.number().min(1).max(10).default(3).describe('How many levels deep to traverse'),
     },
     safeTool('get_dependency_graph', async ({ file_path, direction, depth }: { file_path: string, direction: 'dependencies' | 'dependents', depth: number }) => {
-      const err = requireProject()
+      const err = await ensureProject(file_path)
       if (err) return text(err)
-      return text(getDependencyGraph(state.db, file_path, direction, depth))
+      return text(getDependencyGraph(state.db, toRelative(file_path), direction, depth))
     })
   )
 
@@ -248,13 +273,14 @@ export function createServer(state: ServerState) {
     'Get what a function calls recursively, rendered as a tree. Shows the execution flow from a function.',
     {
       function_name: z.string().describe('Function name to trace calls from'),
-      file: z.string().optional().describe('File where the function is defined (disambiguates if multiple matches)'),
+      file: z.string().optional().describe('File where the function is defined (absolute or relative path)'),
       depth: z.number().min(1).max(5).default(2).describe('How many levels deep to trace'),
+      path: z.string().optional().describe(PATH_DESC),
     },
-    safeTool('get_call_graph', async ({ function_name, file, depth }: { function_name: string, file?: string, depth: number }) => {
-      const err = requireProject()
+    safeTool('get_call_graph', async ({ function_name, file, depth, path }: { function_name: string, file?: string, depth: number, path?: string }) => {
+      const err = await ensureProject(file ?? path)
       if (err) return text(err)
-      return text(getCallGraph(state.db, function_name, file, depth))
+      return text(getCallGraph(state.db, function_name, file ? toRelative(file) : undefined, depth))
     })
   )
 
@@ -264,12 +290,13 @@ export function createServer(state: ServerState) {
     'Extract the source code of a single function/class/interface — not the whole file. Includes JSDoc. ~80% fewer tokens than reading the full file.',
     {
       symbol: z.string().describe('Symbol name to extract'),
-      file: z.string().optional().describe('File where the symbol is defined (disambiguates if multiple matches)'),
+      file: z.string().optional().describe('File where the symbol is defined (absolute or relative path)'),
+      path: z.string().optional().describe(PATH_DESC),
     },
-    safeTool('get_symbol_source', async ({ symbol, file }: { symbol: string, file?: string }) => {
-      const err = requireProject()
+    safeTool('get_symbol_source', async ({ symbol, file, path }: { symbol: string, file?: string, path?: string }) => {
+      const err = await ensureProject(file ?? path)
       if (err) return text(err)
-      return text(getSymbolSource(state.db, state.projectRoot, symbol, file))
+      return text(getSymbolSource(state.db, state.projectRoot, symbol, file ? toRelative(file) : undefined))
     })
   )
 
@@ -279,9 +306,10 @@ export function createServer(state: ServerState) {
     'Get a high-level architecture overview: directories, files, and their exported symbols. Understand the project structure in one call.',
     {
       depth: z.number().min(1).max(5).default(3).describe('How many directory levels deep to show'),
+      path: z.string().optional().describe(PATH_DESC),
     },
-    safeTool('get_project_map', async ({ depth }: { depth: number }) => {
-      const err = requireProject()
+    safeTool('get_project_map', async ({ depth, path }: { depth: number, path?: string }) => {
+      const err = await ensureProject(path)
       if (err) return text(err)
       return text(getProjectMap(state.db, depth))
     })
@@ -291,9 +319,11 @@ export function createServer(state: ServerState) {
   server.tool(
     'get_changes_since_last_session',
     'What changed in the codebase since the AI last interacted with it. Shows added, modified, and deleted files with their symbols.',
-    {},
-    safeTool('get_changes_since_last_session', async () => {
-      const err = requireProject()
+    {
+      path: z.string().optional().describe(PATH_DESC),
+    },
+    safeTool('get_changes_since_last_session', async ({ path }: { path?: string }) => {
+      const err = await ensureProject(path)
       if (err) return text(err)
       return text(getChangesSinceLastSession(state.db, state.projectRoot))
     })
@@ -305,9 +335,10 @@ export function createServer(state: ServerState) {
     'Dead code detection: find exported symbols that are never imported anywhere in the codebase.',
     {
       scope: z.string().optional().describe('Limit to exports in files matching this path prefix (e.g. "src/utils/")'),
+      path: z.string().optional().describe(PATH_DESC),
     },
-    safeTool('find_unused_exports', async ({ scope }: { scope?: string }) => {
-      const err = requireProject()
+    safeTool('find_unused_exports', async ({ scope, path }: { scope?: string, path?: string }) => {
+      const err = await ensureProject(path)
       if (err) return text(err)
       return text(findUnusedExports(state.db, scope))
     })
@@ -320,9 +351,10 @@ export function createServer(state: ServerState) {
     {
       pattern: z.enum(['http_calls', 'env_access', 'error_handlers', 'async_functions', 'todos', 'test_files'])
         .describe('Pattern to search for'),
+      path: z.string().optional().describe(PATH_DESC),
     },
-    safeTool('search_by_pattern', async ({ pattern }: { pattern: string }) => {
-      const err = requireProject()
+    safeTool('search_by_pattern', async ({ pattern, path }: { pattern: string, path?: string }) => {
+      const err = await ensureProject(path)
       if (err) return text(err)
       return text(searchByPattern(state.db, pattern))
     })
@@ -333,12 +365,12 @@ export function createServer(state: ServerState) {
     'get_file_summary',
     'Token-efficient file overview (~50 tokens). Shows imports, exports, and dependents in compact format. Use to scan multiple files cheaply.',
     {
-      file_path: z.string().describe('Relative path to the file'),
+      file_path: z.string().describe('Path to the file (absolute or relative). Absolute paths auto-detect the project.'),
     },
     safeTool('get_file_summary', async ({ file_path }: { file_path: string }) => {
-      const err = requireProject()
+      const err = await ensureProject(file_path)
       if (err) return text(err)
-      return text(getFileSummary(state.db, file_path))
+      return text(getFileSummary(state.db, toRelative(file_path)))
     })
   )
 
@@ -349,9 +381,10 @@ export function createServer(state: ServerState) {
     {
       query: z.string().describe('Search query (e.g. "authentication middleware", "database connection")'),
       limit: z.number().min(1).max(50).default(10).describe('Max results to return'),
+      path: z.string().optional().describe(PATH_DESC),
     },
-    safeTool('search_code', async ({ query, limit }: { query: string, limit: number }) => {
-      const err = requireProject()
+    safeTool('search_code', async ({ query, limit, path }: { query: string, limit: number, path?: string }) => {
+      const err = await ensureProject(path)
       if (err) return text(err)
       return text(searchCode(state.db, query, limit))
     })
@@ -364,9 +397,10 @@ export function createServer(state: ServerState) {
     {
       scope: z.string().optional().describe('Limit to files matching this path prefix (e.g. "src/utils/")'),
       kind: z.enum(['function', 'class', 'interface', 'type', 'enum', 'variable']).optional().describe('Filter by symbol kind'),
+      path: z.string().optional().describe(PATH_DESC),
     },
-    safeTool('find_unused_code', async ({ scope, kind }: { scope?: string, kind?: string }) => {
-      const err = requireProject()
+    safeTool('find_unused_code', async ({ scope, kind, path }: { scope?: string, kind?: string, path?: string }) => {
+      const err = await ensureProject(path)
       if (err) return text(err)
       return text(findUnusedCode(state.db, scope, kind))
     })
