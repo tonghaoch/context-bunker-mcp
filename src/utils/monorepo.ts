@@ -1,5 +1,5 @@
-import { existsSync, readFileSync, statSync } from 'node:fs'
-import { join, dirname, resolve } from 'node:path'
+import { existsSync, statSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 
 /**
  * Walk up from any file/directory path and return the nearest (deepest)
