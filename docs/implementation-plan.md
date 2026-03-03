@@ -340,10 +340,13 @@ Add `search_code` tool (or integrate into `find_symbol` as fallback):
 | ~~P1~~ | ~~Python language support~~ | ✅ Implemented |
 | ~~P1~~ | ~~Go language support~~ | ✅ Implemented |
 | P1 | SSE transport (for IDE integrations) | 1 day |
-| P2 | Rust, Java, C/C++ support | 1-2 days each |
-| P2 | Monorepo-aware indexing (workspaces) | 3-5 days |
+| ~~P2~~ | ~~Rust, Java, C# support~~ | ✅ Implemented |
+| ~~P2~~ | ~~Monorepo-aware indexing (auto-detect project root)~~ | ✅ Implemented — all tools auto-detect nearest project root from any path |
+| ~~P2~~ | ~~`find_unused_code` tool (internal dead code)~~ | ✅ Implemented |
+| ~~P2~~ | ~~`search_code` tool (TF-IDF semantic search)~~ | ✅ Implemented |
 | P2 | `analyze_pr_impact` tool (git diff → affected symbols) | 2-3 days |
 | P2 | `trace_api_flow` tool (route → handler → service) | 3-5 days |
+| P2 | C/C++ language support | 1-2 days |
 | P3 | Remote codebases (GitHub URL → index) | 1 week |
 | P3 | Shared indexes (team-wide, git-synced) | 1 week |
 | P3 | Web dashboard for index visualization | 1-2 weeks |

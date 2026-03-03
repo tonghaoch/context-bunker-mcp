@@ -66,7 +66,7 @@ const db = isBun
 │  │  registerTool('get_smart_context', ...)                     │  │
 │  │  registerTool('find_symbol', ...)                           │  │
 │  │  registerTool('get_dependency_graph', ...)                  │  │
-│  │  ... (15 tools total)                                       │  │
+│  │  ... (17 tools total)                                       │  │
 │  └───────────────────────┬────────────────────────────────────┘  │
 │                          │                                       │
 │  ┌───────────────────────▼────────────────────────────────────┐  │
@@ -205,8 +205,9 @@ web-tree-sitter runs in any Node/Bun environment without compilation. The WASM o
 | Python | `tree-sitter-python` | ✅ `languages/python.ts` | P1 |
 | Go | `tree-sitter-go` | ✅ `languages/go.ts` | P1 |
 | Rust | `tree-sitter-rust` | ✅ `languages/rust.ts` | P2 |
-| Java | `tree-sitter-java` | 🔲 Grammar only | P2 |
-| C/C++ | `tree-sitter-c`, `tree-sitter-cpp` | 🔲 Not yet | P2 |
+| Java | `tree-sitter-java` | ✅ `languages/java.ts` | P2 |
+| C# | `tree-sitter-c-sharp` | ✅ `languages/c_sharp.ts` | P2 |
+| C/C++ | `tree-sitter-c`, `tree-sitter-cpp` | 🔲 Not yet | P3 |
 
 ### Symbol Extraction (per language)
 
@@ -301,7 +302,7 @@ context-bunker-mcp/
 ├── tsconfig.json
 ├── src/
 │   ├── index.ts                  # Entry point: CLI args, MCP server setup
-│   ├── server.ts                 # Tool registration (15 tools)
+│   ├── server.ts                 # Tool registration (17 tools) + auto-project-detection
 │   ├── config.ts                 # .context-bunker.json config loading + validation
 │   │
 │   ├── tools/                    # One file per tool
@@ -315,6 +316,7 @@ context-bunker-mcp/
 │   │   ├── get-file-summary.ts
 │   │   ├── get-changes.ts
 │   │   ├── find-unused-exports.ts
+│   │   ├── find-unused-code.ts
 │   │   ├── search-by-pattern.ts
 │   │   └── search-code.ts
 │   │
@@ -336,17 +338,30 @@ context-bunker-mcp/
 │   │   ├── javascript.ts         # JS/JSX — re-exports TS extractor (P0)
 │   │   ├── python.ts             # Python extraction (P1)
 │   │   ├── go.ts                 # Go extraction (P1)
-│   │   └── rust.ts               # Rust extraction (P2)
+│   │   ├── rust.ts               # Rust extraction (P2)
+│   │   ├── java.ts               # Java extraction (P2)
+│   │   └── c_sharp.ts            # C# extraction (P2)
 │   │
 │   └── utils/
-│       └── paths.ts              # Path normalization
+│       ├── paths.ts              # Path normalization
+│       └── monorepo.ts           # Auto-detect nearest project root
 │
 ├── tests/
 │   ├── indexer.test.ts           # TS indexer tests
 │   ├── tools.test.ts             # Tool function tests
+│   ├── tools-polyglot.test.ts    # Multi-language tool tests
+│   ├── config.test.ts            # Config + DB path tests
+│   ├── monorepo.test.ts          # Monorepo auto-detection tests
 │   ├── python.test.ts            # Python extractor tests
 │   ├── go.test.ts                # Go extractor tests
 │   ├── rust.test.ts              # Rust extractor tests
+│   ├── java.test.ts              # Java extractor tests
+│   ├── csharp.test.ts            # C# extractor tests
+│   ├── branches.test.ts          # Branch/conditional extraction tests
+│   ├── sessions.test.ts          # Session tracking tests
+│   ├── search-patterns.test.ts   # Pattern search tests
+│   ├── fixes.test.ts             # Regression tests
+│   ├── unit.test.ts              # Unit tests
 │   └── fixtures/
 │       ├── small-ts/             # 5-file TS project
 │       ├── small-py/             # 4-file Python project

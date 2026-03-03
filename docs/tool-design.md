@@ -8,7 +8,9 @@
 4. **Persistent** — index survives across sessions (SQLite)
 5. **Incremental** — file watcher re-indexes only changed files
 
-## Core Tools (11 + 4 housekeeping = 15 total)
+## Core Tools (13 + 4 housekeeping = 17 total)
+
+> **Note:** All tools accept absolute file paths and auto-detect the project root. In monorepos, this scopes to the nearest sub-package. No explicit `set_project` call needed.
 
 ---
 
@@ -369,14 +371,55 @@ src/ (42 files, 156 exports)
 
 ---
 
+### 12. `search_code`
+
+**Semantic code search using local TF-IDF — no API keys.**
+
+**Input:**
+```json
+{ "query": "authentication middleware", "limit": 10 }
+```
+
+**Output:** Ranked list of files by relevance score with matched terms.
+
+**vs Grep:** Grep requires exact text matches. TF-IDF understands term relevance — searching "authentication" finds files with `verifyToken`, `authMiddleware`, `jwt` even without exact matches.
+
+---
+
+### 13. `find_unused_code`
+
+**Dead code detection — internal symbols (functions, classes, variables) never called, imported, or exported anywhere.**
+
+**Input:**
+```json
+{ "scope": "src/utils/", "kind": "function" }
+```
+
+**Output:** List of internal symbols that are defined but never referenced in any other file.
+
+**vs `find_unused_exports`:** `find_unused_exports` checks exported symbols only. `find_unused_code` checks internal (non-exported) symbols — functions defined but never called even within the same project.
+
+---
+
 ### Housekeeping Tools
 
-#### `reindex`
-Force full re-index. Normally not needed — file watcher handles incremental updates.
+#### `set_project`
+Set the project directory to index. Accepts any absolute path (file or directory) — **auto-detects the nearest project root**. In monorepos, automatically scopes to the specific package.
 
 ```json
-{ "scope": "full" | "file", "file_path": "optional/path.ts" }
+{ "path": "/workspace/monorepo/packages/my-app/src/index.ts" }
 ```
+
+→ Auto-detects project root as `/workspace/monorepo/packages/my-app/`
+
+#### `reindex`
+Force full re-index or re-index a single file. Normally not needed — file watcher handles incremental updates.
+
+```json
+{ "file_path": "src/auth/middleware.ts" }
+```
+
+Accepts absolute or relative paths. Omit `file_path` for full re-index.
 
 #### `get_status`
 Index health + session efficiency metrics.
@@ -407,7 +450,9 @@ Index health + session efficiency metrics.
 | `get_call_graph` | Shared (2 competitors) | Tree visualization, depth control |
 | `get_changes_since_last_session` | **UNIQUE** | Impossible without persistence |
 | `find_unused_exports` | **UNIQUE** | Infeasible with grep |
+| `find_unused_code` | **UNIQUE** | Internal dead code detection |
 | `get_symbol_source` | Shared (1 competitor) | JSDoc inclusion, line range |
 | `search_by_pattern` | **NEAR-UNIQUE** | Structural patterns, not text |
+| `search_code` | Shared (2 competitors) | Local TF-IDF, zero API keys |
 | `get_file_summary` | **UNIQUE** (token-optimized) | 10x more compact than file read |
 | `get_project_map` | Shared (2 competitors) | Symbol-level detail, not just files |

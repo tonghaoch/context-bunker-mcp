@@ -123,9 +123,12 @@
 | Project overview | ❌ | ✅ (per-file) | ✅ | ✅ |
 | Cross-session changes | ❌ | ❌ | ❌ | **✅ Unique** |
 | Unused exports | ❌ | ❌ | ❌ | **✅ Unique** |
+| Unused internal code | ❌ | ❌ | ❌ | **✅ Unique** |
 | Symbol source extraction | ❌ | ❌ | ✅ | ✅ |
 | Structural pattern search | ❌ | ❌ | ❌ | **✅ Near-unique** |
+| Semantic code search | ✅ (vector) | ❌ | ❌ | ✅ (local TF-IDF) |
 | File summary (compact) | ❌ | ✅ (partial) | ✅ (partial) | **✅ Token-optimized** |
+| Monorepo auto-detection | ❌ | ❌ | ❌ | **✅ Unique** |
 | Session token stats | ✅ (basic) | ✅ (dashboard) | ✅ | ✅ |
 | File editing | ❌ | ✅ (6 tools) | ❌ | ❌ (by design) |
 | Memory/notes | ❌ | ✅ (4 tools) | ❌ | ❌ |
@@ -157,7 +160,8 @@ claude-context (the #1 TS solution): last commit Sep 2025, 5+ months stale. mcp-
 - **One-command install** (`npx context-bunker`)
 - **Pre-computed structural intelligence** (not just text search)
 - **Cross-session persistence** (the thing nobody else does)
-- **4 unique tools** that no competitor offers
+- **6 unique/near-unique tools** that no competitor offers
+- **Monorepo auto-detection** (all tools auto-scope to the nearest package)
 
 The closest competitors are:
 - Serena (better at LSP-based editing, but Python + heavy)
